@@ -17,17 +17,20 @@ class TestSDKApi(unittest.TestCase):
         self.timeout = 40
 
     def setUp(self):
+        logger.info('setUp')
         params = brainflow.BrainFlowInputParams()
         params.mac_address = self.mac_address
         params.timeout = self.timeout
         self.board_shim = BoardShim(self.board_id, params)
 
     def tearDown(self):
+        logger.info('tearDown')
         if self.board_shim is not None:
             self.board_shim.release_session()
             self.board_shim = None
 
     def test_prepare_session(self):
+        logger.info('test_prepare_session')
         try:
             self.board_shim.prepare_session()
             eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
@@ -43,6 +46,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.release_session()
 
     def test_start_stream(self):
+        logger.info('test_start_stream')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
@@ -61,6 +65,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.release_session()
 
     def test_get_sampling_rate(self):
+        logger.info('test_get_sampling_rate')
         try:
             self.board_shim.prepare_session()
             sampling_rate = self.board_shim.get_sampling_rate()
@@ -76,6 +81,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.release_session()
 
     def test_get_board_data(self):
+        logger.info('test_get_board_data')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
@@ -94,6 +100,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.release_session()
 
     def test_stop_stream(self):
+        logger.info('test_stop_stream')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
@@ -112,6 +119,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.release_session()
 
     def test_release_session(self):
+        logger.info('test_release_session')
         try:
             self.board_shim.prepare_session()
             self.board_shim.release_session()
