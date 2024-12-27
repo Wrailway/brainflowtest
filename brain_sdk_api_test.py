@@ -64,7 +64,8 @@ class TestSDKApi(unittest.TestCase):
             logger.error(f"test_start_stream: 其他运行时异常，信息: {e}")
             self.fail(f"在test_start_stream中出现其他运行时异常: {e}")
         finally:
-            self.board_shim.release_session()
+            if self.board_shim.is_prepared():
+                self.board_shim.release_session()
 
     def test_get_sampling_rate(self):
         logger.info('test_get_sampling_rate')
