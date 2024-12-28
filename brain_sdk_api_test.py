@@ -14,7 +14,7 @@ class TestSDKApi(unittest.TestCase):
         super().__init__(*args, **kwargs)
         self.mac_address = mac_address
         self.board_id = board_id
-        self.timeout = 5
+        self.timeout = 10
 
     def setUp(self):
         logger.info('setUp')

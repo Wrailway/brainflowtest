@@ -284,7 +284,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             # 设置脑电设备相关参数
             self.board_id = int(board_id_text)
             self.params = brainflow.BrainFlowInputParams()
-            self.params.timeout = 40
+            self.params.timeout = 10
             if mac_address:
                 self.params.mac_address = mac_address
             self.board_shim = BoardShim(self.board_id, self.params)
