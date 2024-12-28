@@ -2,7 +2,7 @@ import logging
 import time
 import unittest
 
-from brainflow import BoardShim, BrainFlowError
+from brainflow import BoardIds, BoardShim, BrainFlowError
 import brainflow
 
 logging.basicConfig(level=logging.INFO)
@@ -14,7 +14,7 @@ class TestSDKApi(unittest.TestCase):
         super().__init__(*args, **kwargs)
         self.mac_address = mac_address
         self.board_id = board_id
-        self.timeout = 40
+        self.timeout = 5
 
     def setUp(self):
         logger.info('setUp')
@@ -45,17 +45,18 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                time.sleep(self.timeout)
+                # time.sleep(self.timeout)
 
     def test_start_stream(self):
         logger.info('test_start_stream')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
-            if self.board_shim.is_streaming():
-                logger.info("test_start_stream: 流启动成功")
-            else:
-                raise ValueError("流启动后但未处于正在流状态")
+            time.sleep(3)
+            data = self.board_shim.get_board_data()
+            self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
+            # logger.info(data)
+            logger.info("test_start_stream: 流启动成功")
             self.board_shim.stop_stream()
         except BrainFlowError as e:
             logger.error(f"test_start_stream: 脑flow业务异常，信息: {e}")
@@ -83,14 +84,14 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                time.sleep(self.timeout)
+                # time.sleep(self.timeout)
 
     def test_get_board_data(self):
         logger.info('test_get_board_data')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
-            time.sleep(1)
+            time.sleep(3)
             data = self.board_shim.get_board_data()
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
             logger.info("test_get_board_data: 获取板卡数据成功")
@@ -104,7 +105,7 @@ class TestSDKApi(unittest.TestCase):
             if self.board_shim.is_prepared():
                 self.board_shim.stop_stream()
                 self.board_shim.release_session()
-                time.sleep(self.timeout)
+                # time.sleep(self.timeout)
 
     def test_stop_stream(self):
         logger.info('test_stop_stream')
@@ -112,10 +113,13 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
             self.board_shim.stop_stream()
-            if not self.board_shim.is_streaming():
-                logger.info("test_stop_stream: 流停止成功")
-            else:
-                raise ValueError("调用停止流方法后，流仍未停止")
+            time.sleep(5)
+            data1 = self.board_shim.get_board_data()
+            logger.info(data1)
+            data2 = self.board_shim.get_board_data()
+            logger.info(data2)
+            self.assertEqual(data2.shape[1], 0)
+            logger.info("test_stop_stream: 流停止成功")
         except BrainFlowError as e:
             logger.error(f"test_stop_stream: 脑flow业务异常，信息: {e}")
             self.fail(f"在test_stop_stream中出现脑flow业务异常: {e}")
@@ -125,13 +129,13 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                time.sleep(self.timeout)
+                # time.sleep(self.timeout)
 
     def test_release_session(self):
         logger.info('test_release_session')
         try:
             self.board_shim.prepare_session()
-            time.sleep(5)
+            time.sleep(3)
             self.board_shim.release_session()
             logger.info("test_release_session: 会话释放成功")
         except BrainFlowError as e:
@@ -141,49 +145,54 @@ class TestSDKApi(unittest.TestCase):
             logger.error(f"test_release_session: 其他运行时异常，信息: {e}")
             self.fail(f"在test_release_session中出现其他运行时异常: {e}")
         finally:
-            time.sleep(self.timeout)
+            # time.sleep(self.timeout)
+            pass
 
 
-def main(mac_address: str, board_id: int):
-    start_time = time.time()
-    test_result = '不通过'
-
-    TempTestClass = type('TempTest', (TestSDKApi,), {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address, board_id, *args, **kwargs)})
-
-    suite = unittest.TestSuite()
-    loader = unittest.TestLoader()
-    tests = loader.loadTestsFromTestCase(TempTestClass)
-    suite.addTests(tests)
-
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-
-    # 处理测试失败情况
-    for failure in result.failures:
-        test_method_name, failure_message = failure
-        handle_failure_result(test_method_name, failure_message)
-
-    # 处理测试错误情况（一般是代码层面错误导致测试无法正确执行）
-    for error in result.errors:
-        test_method_name, error_message = error
-        handle_error_result(test_method_name, error_message)
-
-    # 处理测试跳过情况
-    for skipped_test in result.skipped:
-        test_method_name, reason = skipped_test
-        handle_skipped_result(test_method_name, reason)
-
-    # 处理测试成功情况
-    if result.wasSuccessful():
-        logger.info("All tests passed successfully.\n")
-        test_result = '通过'
-    else:
-        logger.info("Some tests failed or encountered errors.\n")
+def main(mac_address: str, board_id: int,aging_duration:float = 0.5):
+    end_time = time.time() + aging_duration * 3600
+    round_num = 0
+    while time.time() < end_time:
+        start_time = time.time()
         test_result = '不通过'
+        round_num += 1
+        TempTestClass = type('TempTest', (TestSDKApi,), {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address, board_id, *args, **kwargs)})
 
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    logger.info(f"\n\n Ran {result.testsRun} tests in {elapsed_time:.3f}s,测试结果是:{test_result}\n")
+        suite = unittest.TestSuite()
+        loader = unittest.TestLoader()
+        tests = loader.loadTestsFromTestCase(TempTestClass)
+        suite.addTests(tests)
+
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(suite)
+
+        # 处理测试失败情况
+        for failure in result.failures:
+            test_method_name, failure_message = failure
+            handle_failure_result(test_method_name, failure_message)
+
+        # 处理测试错误情况（一般是代码层面错误导致测试无法正确执行）
+        for error in result.errors:
+            test_method_name, error_message = error
+            handle_error_result(test_method_name, error_message)
+
+        # 处理测试跳过情况
+        for skipped_test in result.skipped:
+            test_method_name, reason = skipped_test
+            handle_skipped_result(test_method_name, reason)
+
+        # 处理测试成功情况
+        if result.wasSuccessful():
+            logger.info("All tests passed successfully.\n")
+            test_result = '通过'
+        else:
+            logger.info("Some tests failed or encountered errors.\n")
+            test_result = '不通过'
+
+        end_time2 = time.time()
+        elapsed_time = end_time2 - start_time
+        logger.info(f"\n\n 执行case: {result.testsRun}, 耗时： {elapsed_time:.3f}s\n")
+        logger.info(f"#################第 {round_num} 轮测试结束，测试结果：{test_result}#############\n")
 
 
 def handle_failure_result(test_method_name, failure_message):
@@ -203,6 +212,7 @@ def handle_successful_result():
 
 
 if __name__ == '__main__':
-    mac_address = 'C4:64:E3:D8:E6:D2'
-    board_id = 57
-    main(mac_address=mac_address, board_id=board_id)
+    # mac_address = '60:77:71:74:E6:B7' # C4:64:E3:D8:E6:D2
+    board_id = BoardIds.SYNTHETIC_BOARD.value
+    aging_duration = 1
+    main(mac_address='', board_id=board_id,aging_duration=aging_duration)
