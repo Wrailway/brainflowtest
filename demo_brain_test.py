@@ -313,8 +313,18 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             QtWidgets.QMessageBox.critical(self, "Connection failed", f"There is an error in the connection of the electroencephalogram (EEG) device. Possible reasons may include that the device is not turned on, the MAC address is incorrect, or there are driver issues, etc. Error message：{str(bfe)}")
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Connection failed", f"The device connection failed due to an unknown error. Please check the relevant configurations and the device status. Error message：{str(e)}")
-
+    
+    def remove_all_widgets_from_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+            elif item.layout():
+                self.remove_all_widgets_from_layout(item.layout())
+                
     def create_channel_checkboxes_vertical(self):
+        self.channel_checkboxes.clear()
+        self.remove_all_widgets_from_layout(self.channel_layout)
         for channel in self.eeg_channels:
             checkbox = QtWidgets.QCheckBox(f'Channel {channel}')
             checkbox.setChecked(True)  # 默认勾选所有通道
@@ -327,6 +337,8 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         row = 0
         col = 0
         max_columns = 4  # 最大列数设置为3，可根据需要调整
+        self.channel_checkboxes.clear()
+        self.remove_all_widgets_from_layout(self.channel_layout)
         for channel in self.eeg_channels:
             checkbox = QtWidgets.QCheckBox(f'Channel {channel}')
             if channel==1:
