@@ -92,7 +92,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # MAC 地址输入框
         mac_layout = QtWidgets.QHBoxLayout()
         self.mac_label = QtWidgets.QLabel('MAC address:') #C4:64:E3:D8:E6:D2
-        self.mac_edit = QtWidgets.QLineEdit('C4:64:E3:D8:E6:D2')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        self.mac_edit = QtWidgets.QLineEdit('60:77:71:74:E6:B7')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
         mac_layout.addWidget(self.mac_label, 0, alignment=QtCore.Qt.AlignLeft)
         mac_layout.addWidget(self.mac_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(mac_layout)
@@ -100,7 +100,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # board_id 输入框
         id_layout = QtWidgets.QHBoxLayout()
         self.board_id_label = QtWidgets.QLabel('Board ID:')
-        self.board_id_edit = QtWidgets.QLineEdit('57')  # 留空让用户输入真实Board ID
+        self.board_id_edit = QtWidgets.QLineEdit('58')  # 留空让用户输入真实Board ID
         id_layout.addWidget(self.board_id_label, 0, alignment=QtCore.Qt.AlignLeft)
         id_layout.addWidget(self.board_id_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(id_layout)
@@ -291,7 +291,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             # 准备会话并开始数据采集
             self.board_shim.prepare_session()
             # 获取脑电通道列表
-            self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)
+            self.eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
             # self.data_buffer = np.zeros((self.eeg_channels, 0))  # 明确初始化为各通道长度为0的数组
             # self.buffer_index = 0
             # 启用开始采集按钮
@@ -460,7 +460,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         if self.board_shim is not None:
             try:
                 self.board_shim.stop_stream()
-                # self.board_shim.release_session()
+                self.board_shim.release_session()
                 if self.timer is not None and self.timer.isActive():
                     self.timer.stop()
                     self.timer  = None
