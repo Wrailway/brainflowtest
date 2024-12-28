@@ -7,3 +7,4 @@
 二、基于brainflow开源代码，写了一个测试sdk api的testsuite
 1. 输入端：设备mac地址和board id及aging time
 2. 输出测试结果
+3. timeout 根据具体设备情况设置，这俩5s为使用的模拟板子，真实板子要长一些
