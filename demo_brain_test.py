@@ -10,8 +10,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import numpy as np
+from brainflow.board_shim import BoardIds, BoardShim
 import brainflow
-from brainflow.board_shim import BoardShim
 from brainflow.data_filter import DataFilter, FilterTypes
 from PyQt5.QtCore import QTimer
 
@@ -92,7 +92,8 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # MAC 地址输入框
         mac_layout = QtWidgets.QHBoxLayout()
         self.mac_label = QtWidgets.QLabel('MAC address:') #C4:64:E3:D8:E6:D2
-        self.mac_edit = QtWidgets.QLineEdit('60:77:71:74:E6:B7')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        # self.mac_edit = QtWidgets.QLineEdit('60:77:71:74:E6:B7')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        self.mac_edit = QtWidgets.QLineEdit('')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
         mac_layout.addWidget(self.mac_label, 0, alignment=QtCore.Qt.AlignLeft)
         mac_layout.addWidget(self.mac_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(mac_layout)
@@ -100,7 +101,8 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # board_id 输入框
         id_layout = QtWidgets.QHBoxLayout()
         self.board_id_label = QtWidgets.QLabel('Board ID:')
-        self.board_id_edit = QtWidgets.QLineEdit('58')  # 留空让用户输入真实Board ID
+        # self.board_id_edit = QtWidgets.QLineEdit('58')  # 留空让用户输入真实Board ID
+        self.board_id_edit = QtWidgets.QLineEdit(str(BoardIds.SYNTHETIC_BOARD.value))  # 留空让用户输入真实Board ID
         id_layout.addWidget(self.board_id_label, 0, alignment=QtCore.Qt.AlignLeft)
         id_layout.addWidget(self.board_id_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(id_layout)
@@ -511,47 +513,99 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         """
         根据用户选择的滤波器类型及参数，对当前数据缓冲区的数据应用相应滤波器。
         """
-        sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        try:
+            sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        except brainflow.BrainFlowError as bfe:
+            logging.error(f"获取采样率出错: {str(bfe)}")
+            return
+
         for filter_type in self.filter_checkboxes:
             checkbox = self.filter_checkboxes[filter_type]["checkbox"]
             if checkbox.isChecked():
+                self.current_filter = filter_type
                 cutoff_edits = self.filter_checkboxes[filter_type].get("cutoff_edit", [])
                 if filter_type == self.low_pass_filter:
-                    cutoff_frequency = float(cutoff_edits.text()) if cutoff_edits else self.lowpass_default_cutoff
-                    self.apply_filter_to_data(sampling_rate, self.low_pass_filter, cutoff_frequency)
-                    self.current_filter = filter_type
-                    self.current_cutoff_freq = cutoff_frequency
+                    self.apply_low_pass_filter(sampling_rate, cutoff_edits)
                     break
                 elif filter_type == self.high_pass_filter:
-                    cutoff_frequency = float(cutoff_edits.text()) if cutoff_edits else self.highpass_default_cutoff
-                    self.apply_filter_to_data(sampling_rate, self.high_pass_filter, cutoff_frequency)
-                    self.current_filter = filter_type
-                    self.current_cutoff_freq = cutoff_frequency
+                    self.apply_high_pass_filter(sampling_rate, cutoff_edits)
                     break
                 elif filter_type == self.band_pass_filter:
-                    low_cutoff_frequency = float(cutoff_edits[0].text()) if cutoff_edits else self.bandpass_default_low_cutoff
-                    high_cutoff_frequency = float(cutoff_edits[1].text()) if cutoff_edits else self.bandpass_default_high_cutoff
-                    self.apply_filter_to_data(sampling_rate, self.band_pass_filter, low_cutoff_frequency, high_cutoff_frequency)
-                    self.current_filter = self.band_pass_filter
-                    self.current_low_cutoff_freq = low_cutoff_frequency
-                    self.current_high_cutoff_freq = high_cutoff_frequency
+                    self.apply_band_pass_filter(sampling_rate, cutoff_edits)
                     break
                 elif filter_type == self.band_stop_filter:
-                    low_cutoff_frequency = float(cutoff_edits[0].text()) if cutoff_edits else self.bandstop_default_low_cutoff
-                    high_cutoff_frequency = float(cutoff_edits[1].text()) if cutoff_edits else self.bandstop_default_high_cutoff
-                    self.apply_filter_to_data(sampling_rate, self.band_stop_filter, low_cutoff_frequency, high_cutoff_frequency)
-                    self.current_filter = self.band_stop_filter
-                    self.current_low_cutoff_freq = low_cutoff_frequency
-                    self.current_high_cutoff_freq = high_cutoff_frequency
+                    self.apply_band_stop_filter(sampling_rate, cutoff_edits)
                     break
             else:
                 self.current_filter = None
                 self.current_cutoff_freq = 0.0
                 self.current_low_cutoff_freq = 0.0
-                self.current_high_cutoff_freq =0.0
-                
-        # logger.info(f'apply_filter,filter_type={self.current_filter}')
-     
+                self.current_high_cutoff_freq = 0.0
+
+    def apply_low_pass_filter(self, sampling_rate, cutoff_edits):
+        """
+        应用低通滤波器，获取截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            cutoff_frequency = float(cutoff_edits.text()) if cutoff_edits else self.lowpass_default_cutoff
+            if cutoff_frequency < 0:
+                logging.error("低通滤波器截止频率不能为负数，请重新输入")
+                return
+            self.apply_filter_to_data(sampling_rate, self.low_pass_filter, cutoff_frequency)
+            self.current_filter = self.low_pass_filter
+            self.current_cutoff_freq = cutoff_frequency
+        except ValueError as ve:
+            logging.error(f"低通滤波器截止频率参数转换出错: {str(ve)}")
+
+    def apply_high_pass_filter(self, sampling_rate, cutoff_edits):
+        """
+        应用高通滤波器，获取截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            cutoff_frequency = float(cutoff_edits.text()) if cutoff_edits else self.highpass_default_cutoff
+            if cutoff_frequency < 0:
+                logging.error("高通滤波器截止频率不能为负数，请重新输入")
+                return
+            self.apply_filter_to_data(sampling_rate, self.high_pass_filter, cutoff_frequency)
+            self.current_filter = self.high_pass_filter
+            self.current_cutoff_freq = cutoff_frequency
+        except ValueError as ve:
+            logging.error(f"高通滤波器截止频率参数转换出错: {str(ve)}")
+
+    def apply_band_pass_filter(self, sampling_rate, cutoff_edits):
+        """
+        应用带通滤波器，获取低截止频率和高截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            low_cutoff_frequency = float(cutoff_edits[0].text()) if cutoff_edits else self.bandpass_default_low_cutoff
+            high_cutoff_frequency = float(cutoff_edits[1].text()) if cutoff_edits else self.bandpass_default_high_cutoff
+            if low_cutoff_frequency >= high_cutoff_frequency:
+                logging.error("带通滤波器低截止频率应小于高截止频率，请重新输入")
+                return
+            self.apply_filter_to_data(sampling_rate, self.band_pass_filter, low_cutoff_frequency, high_cutoff_frequency)
+            self.current_filter = self.band_pass_filter
+            self.current_low_cutoff_freq = low_cutoff_frequency
+            self.current_high_cutoff_freq = high_cutoff_frequency
+        except (ValueError, IndexError) as e:
+            logging.error(f"带通滤波器截止频率参数获取或转换出错: {str(e)}")
+
+    def apply_band_stop_filter(self, sampling_rate, cutoff_edits):
+        """
+        应用带阻滤波器，获取低截止频率和高截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            low_cutoff_frequency = float(cutoff_edits[0].text()) if cutoff_edits else self.bandstop_default_low_cutoff
+            high_cutoff_frequency = float(cutoff_edits[1].text()) if cutoff_edits else self.bandstop_default_high_cutoff
+            if low_cutoff_frequency >= high_cutoff_frequency:
+                logging.error("带阻滤波器低截止频率应小于高截止频率，请重新输入")
+                return
+            self.apply_filter_to_data(sampling_rate, self.band_stop_filter, low_cutoff_frequency, high_cutoff_frequency)
+            self.current_filter = self.band_stop_filter
+            self.current_low_cutoff_freq = low_cutoff_frequency
+            self.current_high_cutoff_freq = high_cutoff_frequency
+        except (ValueError, IndexError) as e:
+            logging.error(f"带阻滤波器截止频率参数获取或转换出错: {str(e)}")
+
     def apply_filter_to_data(self, sampling_rate, filter_type, *cutoff_frequencies):
         """
         具体执行对数据应用指定滤波器的操作。
@@ -561,18 +615,32 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         filter_type (str): 滤波器类型，如'Low - Pass Filter'等。
         cutoff_frequencies (tuple): 滤波器相关截止频率参数（不同滤波器参数个数不同）。
         """
-        # logger.info(f'apply_filter_to_data,filter_type={filter_type}')
+        if self.data_buffer is None:
+            logging.error("数据缓冲区为空，无法进行滤波操作")
+            return
+
+        if len(self.data_buffer.shape)!= 2:
+            logging.error("数据缓冲区数据格式不符合预期，期望二维数组格式")
+            return
+
         for channel in range(self.data_buffer.shape[0]):
             channel_data = self.data_buffer[channel, :].flatten()
-            if filter_type == self.low_pass_filter:
-                DataFilter.perform_lowpass(channel_data, sampling_rate, cutoff_frequencies[0], 2, FilterTypes.BUTTERWORTH.value, 0)
-            elif filter_type == self.high_pass_filter:
-                DataFilter.perform_highpass(channel_data, sampling_rate, cutoff_frequencies[0], 2, FilterTypes.BUTTERWORTH.value, 0)
-            elif filter_type == self.band_pass_filter:
-                DataFilter.perform_bandpass(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
-            elif filter_type == self.band_stop_filter:
-                DataFilter.perform_bandstop(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
-            self.data_buffer[channel, :] = channel_data.reshape(1, -1)
+            try:
+                if filter_type == self.low_pass_filter:
+                    DataFilter.perform_lowpass(channel_data, sampling_rate, cutoff_frequencies[0], 2, FilterTypes.BUTTERWORTH.value, 0)
+                elif filter_type == self.high_pass_filter:
+                    DataFilter.perform_highpass(channel_data, sampling_rate, cutoff_frequencies[0], 2, FilterTypes.BUTTERWORTH.value, 0)
+                elif filter_type == self.band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
+                elif filter_type == self.band_stop_filter:
+                    DataFilter.perform_bandstop(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
+                reshaped_data = channel_data.reshape(1, -1)
+                # if reshaped_data.shape!= self.data_buffer[channel, :].shape:
+                #     logging.error("滤波后数据重塑形状与原数据缓冲区通道形状不匹配")
+                #     continue
+                self.data_buffer[channel, :] = reshaped_data
+            except Exception as e:
+                logging.error(f"对通道 {channel} 进行 {filter_type} 滤波操作出错: {str(e)}")
                 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
