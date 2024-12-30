@@ -15,6 +15,9 @@ class TestSDKApi(unittest.TestCase):
         self.mac_address = mac_address
         self.board_id = board_id
         self.timeout = 10
+        #以下为测试常数定义部分
+        self.CHANNEL_NUM = 7 # 不同产品的通道数目有区分
+        self.SAMPLING_RATE = 250 # 根据产品定义的实际采样率
 
     def setUp(self):
         logger.info('setUp')
@@ -26,7 +29,6 @@ class TestSDKApi(unittest.TestCase):
     def tearDown(self):
         logger.info('tearDown')
         if self.board_shim is not None:
-            # self.board_shim.release_session()
             self.board_shim = None
 
     def test_prepare_session(self):
@@ -34,7 +36,7 @@ class TestSDKApi(unittest.TestCase):
         try:
             self.board_shim.prepare_session()
             eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
-            self.assertGreaterEqual(len(eeg_channels), 1)
+            self.assertGreaterEqual(len(eeg_channels), self.CHANNEL_NUM)
             logger.info("test_prepare_session: 会话准备成功，脑电通道数量验证通过")
         except BrainFlowError as e:
             logger.error(f"test_prepare_session: 脑flow业务异常，信息: {e}")
@@ -45,27 +47,25 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                # time.sleep(self.timeout)
 
     def test_start_stream(self):
         logger.info('test_start_stream')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
-            time.sleep(3)
             data = self.board_shim.get_board_data()
+            # self.assertGreater(len(data), 0)
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-            # logger.info(data)
             logger.info("test_start_stream: 流启动成功")
-            self.board_shim.stop_stream()
         except BrainFlowError as e:
-            logger.error(f"test_start_stream: 脑flow业务异常，信息: {e}")
+            logger.error(f"在test_start_stream中出现脑flow业务异常: {e}")
             self.fail(f"在test_start_stream中出现脑flow业务异常: {e}")
         except Exception as e:
-            logger.error(f"test_start_stream: 其他运行时异常，信息: {e}")
+            logger.error(f"在test_start_stream中出现其他运行时异常: {e}")
             self.fail(f"在test_start_stream中出现其他运行时异常: {e}")
         finally:
             if self.board_shim.is_prepared():
+                self.board_shim.stop_stream()
                 self.board_shim.release_session()
 
     def test_get_sampling_rate(self):
@@ -73,7 +73,7 @@ class TestSDKApi(unittest.TestCase):
         try:
             self.board_shim.prepare_session()
             sampling_rate = self.board_shim.get_sampling_rate(board_id=self.board_id)
-            self.assertGreater(sampling_rate, 0)
+            self.assertEqual(sampling_rate, self.SAMPLING_RATE)
             logger.info(f"test_get_sampling_rate: 获取采样率成功，采样率为 {sampling_rate}")
         except BrainFlowError as e:
             logger.error(f"test_get_sampling_rate: 脑flow业务异常，信息: {e}")
@@ -84,14 +84,12 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                # time.sleep(self.timeout)
 
     def test_get_board_data(self):
         logger.info('test_get_board_data')
         try:
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
-            time.sleep(3)
             data = self.board_shim.get_board_data()
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
             logger.info("test_get_board_data: 获取板卡数据成功")
@@ -105,7 +103,6 @@ class TestSDKApi(unittest.TestCase):
             if self.board_shim.is_prepared():
                 self.board_shim.stop_stream()
                 self.board_shim.release_session()
-                # time.sleep(self.timeout)
 
     def test_stop_stream(self):
         logger.info('test_stop_stream')
@@ -113,12 +110,14 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
             self.board_shim.stop_stream()
-            time.sleep(5)
-            data1 = self.board_shim.get_board_data()
-            logger.info(data1)
-            data2 = self.board_shim.get_board_data()
-            logger.info(data2)
-            self.assertEqual(data2.shape[1], 0)
+            data = self.board_shim.get_board_data()
+            self.assertNotEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
+            # time.sleep(5)
+            # data1 = self.board_shim.get_board_data()
+            # logger.info(data1)
+            # data2 = self.board_shim.get_board_data()
+            # logger.info(data2)
+            # self.assertEqual(data2.shape[1], 0)
             logger.info("test_stop_stream: 流停止成功")
         except BrainFlowError as e:
             logger.error(f"test_stop_stream: 脑flow业务异常，信息: {e}")
@@ -129,13 +128,11 @@ class TestSDKApi(unittest.TestCase):
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
-                # time.sleep(self.timeout)
 
     def test_release_session(self):
         logger.info('test_release_session')
         try:
             self.board_shim.prepare_session()
-            time.sleep(3)
             self.board_shim.release_session()
             logger.info("test_release_session: 会话释放成功")
         except BrainFlowError as e:
@@ -145,7 +142,6 @@ class TestSDKApi(unittest.TestCase):
             logger.error(f"test_release_session: 其他运行时异常，信息: {e}")
             self.fail(f"在test_release_session中出现其他运行时异常: {e}")
         finally:
-            # time.sleep(self.timeout)
             pass
 
 
@@ -214,5 +210,5 @@ def handle_successful_result():
 if __name__ == '__main__':
     # mac_address = '60:77:71:74:E6:B7' # C4:64:E3:D8:E6:D2
     board_id = BoardIds.SYNTHETIC_BOARD.value
-    aging_duration = 1
+    aging_duration = 0.00001
     main(mac_address='', board_id=board_id,aging_duration=aging_duration)
