@@ -60,9 +60,9 @@ class TestSDKApi(unittest.TestCase):
         except BrainFlowError as e:
             logger.error(f"在test_start_stream中出现脑flow业务异常: {e}")
             self.fail(f"在test_start_stream中出现脑flow业务异常: {e}")
-        except Exception as e:
-            logger.error(f"在test_start_stream中出现其他运行时异常: {e}")
-            self.fail(f"在test_start_stream中出现其他运行时异常: {e}")
+        # except Exception as e:
+        #     logger.error(f"在test_start_stream中出现其他运行时异常: {e}")
+        #     self.fail(f"在test_start_stream中出现其他运行时异常: {e}")
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.stop_stream()
@@ -78,9 +78,9 @@ class TestSDKApi(unittest.TestCase):
         except BrainFlowError as e:
             logger.error(f"test_get_sampling_rate: 脑flow业务异常，信息: {e}")
             self.fail(f"在test_get_sampling_rate中出现脑flow业务异常: {e}")
-        except Exception as e:
-            logger.error(f"test_get_sampling_rate: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_get_sampling_rate中出现其他运行时异常: {e}")
+        # except Exception as e:
+        #     logger.error(f"test_get_sampling_rate: 其他运行时异常，信息: {e}")
+        #     self.fail(f"在test_get_sampling_rate中出现其他运行时异常: {e}")
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
@@ -96,9 +96,9 @@ class TestSDKApi(unittest.TestCase):
         except BrainFlowError as e:
             logger.error(f"test_get_board_data: 脑flow业务异常，信息: {e}")
             self.fail(f"在test_get_board_data中出现脑flow业务异常: {e}")
-        except Exception as e:
-            logger.error(f"test_get_board_data: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_get_board_data中出现其他运行时异常: {e}")
+        # except Exception as e:
+        #     logger.error(f"test_get_board_data: 其他运行时异常，信息: {e}")
+        #     self.fail(f"在test_get_board_data中出现其他运行时异常: {e}")
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.stop_stream()
@@ -122,9 +122,9 @@ class TestSDKApi(unittest.TestCase):
         except BrainFlowError as e:
             logger.error(f"test_stop_stream: 脑flow业务异常，信息: {e}")
             self.fail(f"在test_stop_stream中出现脑flow业务异常: {e}")
-        except Exception as e:
-            logger.error(f"test_stop_stream: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_stop_stream中出现其他运行时异常: {e}")
+        # except Exception as e:
+        #     logger.error(f"test_stop_stream: 其他运行时异常，信息: {e}")
+        #     self.fail(f"在test_stop_stream中出现其他运行时异常: {e}")
         finally:
             if self.board_shim.is_prepared():
                 self.board_shim.release_session()
@@ -138,9 +138,9 @@ class TestSDKApi(unittest.TestCase):
         except BrainFlowError as e:
             logger.error(f"test_release_session: 脑flow业务异常，信息: {e}")
             self.fail(f"在test_release_session中出现脑flow业务异常: {e}")
-        except Exception as e:
-            logger.error(f"test_release_session: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_release_session中出现其他运行时异常: {e}")
+        # except Exception as e:
+        #     logger.error(f"test_release_session: 其他运行时异常，信息: {e}")
+        #     self.fail(f"在test_release_session中出现其他运行时异常: {e}")
         finally:
             pass
 

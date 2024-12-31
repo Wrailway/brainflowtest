@@ -92,8 +92,8 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # MAC 地址输入框
         mac_layout = QtWidgets.QHBoxLayout()
         self.mac_label = QtWidgets.QLabel('MAC address:') #C4:64:E3:D8:E6:D2
-        # self.mac_edit = QtWidgets.QLineEdit('60:77:71:74:E6:B7')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
-        self.mac_edit = QtWidgets.QLineEdit('')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        self.mac_edit = QtWidgets.QLineEdit('60:77:71:74:E6:B7')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        # self.mac_edit = QtWidgets.QLineEdit('')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
         mac_layout.addWidget(self.mac_label, 0, alignment=QtCore.Qt.AlignLeft)
         mac_layout.addWidget(self.mac_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(mac_layout)
@@ -101,8 +101,8 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # board_id 输入框
         id_layout = QtWidgets.QHBoxLayout()
         self.board_id_label = QtWidgets.QLabel('Board ID:')
-        # self.board_id_edit = QtWidgets.QLineEdit('58')  # 留空让用户输入真实Board ID
-        self.board_id_edit = QtWidgets.QLineEdit(str(BoardIds.SYNTHETIC_BOARD.value))  # 留空让用户输入真实Board ID
+        self.board_id_edit = QtWidgets.QLineEdit('58')  # 留空让用户输入真实Board ID
+        # self.board_id_edit = QtWidgets.QLineEdit(str(BoardIds.SYNTHETIC_BOARD.value))  # 留空让用户输入真实Board ID
         id_layout.addWidget(self.board_id_label, 0, alignment=QtCore.Qt.AlignLeft)
         id_layout.addWidget(self.board_id_edit, 0, alignment=QtCore.Qt.AlignLeft)
         left_layout.addLayout(id_layout)
@@ -144,9 +144,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         self.stop_button.clicked.connect(self.stop_real_time_collection)
         op_layout.addWidget(self.stop_button, 0, alignment=QtCore.Qt.AlignLeft)
 
-        # left_layout.addLayout(op_layout)
-        
-          # 创建布局
+        # 创建布局
 
         # 创建下拉选择框
         self.period_combo_box = QtWidgets.QComboBox()
@@ -415,7 +413,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             self.buffer_index = self.data_buffer.shape[1]
             self.check_filter()
             # 更新图形
-            time_axis = np.linspace(0, int(self.period), self.buffer_index)  # 固定时间轴为1秒
+            time_axis = np.linspace(0, int(self.period), self.buffer_index)  # 固定时间轴
             self.update_plot(time_axis)
         except brainflow.BrainFlowError as bfe:
             logging.error(f"从板子获取数据出错: {str(bfe)}")
@@ -432,7 +430,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             if self.channel_checkboxes[channel].isChecked():
                 self.ax.plot(time_axis, self.data_buffer[channel, :self.buffer_index],
                              label=f'Channel {self.eeg_channels[channel]}')
-        self.ax.set_xlim(0, int(self.period))  # 固定x轴范围为1秒
+        self.ax.set_xlim(0, int(self.period))  # 固定x轴范围
         self.ax.set_xlabel('Time (s)')
         self.ax.set_ylabel('Amplitude (uV)')
         self.ax.set_title('EEG Waveform (Real-time)')
@@ -631,16 +629,18 @@ class EEGDataVisualizer(QtWidgets.QWidget):
                 elif filter_type == self.high_pass_filter:
                     DataFilter.perform_highpass(channel_data, sampling_rate, cutoff_frequencies[0], 2, FilterTypes.BUTTERWORTH.value, 0)
                 elif filter_type == self.band_pass_filter:
+                    DataFilter.detrend(channel_data, brainflow.DetrendOperations.CONSTANT.value)  # 去除直流分量（可根据实际情况选择是否需要）
                     DataFilter.perform_bandpass(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
                 elif filter_type == self.band_stop_filter:
+                    DataFilter.detrend(channel_data, brainflow.DetrendOperations.CONSTANT.value)  # 去除直流分量（可根据实际情况选择是否需要）
                     DataFilter.perform_bandstop(channel_data, sampling_rate, cutoff_frequencies[0], cutoff_frequencies[1], 2, FilterTypes.BUTTERWORTH.value, 0)
                 reshaped_data = channel_data.reshape(1, -1)
                 # if reshaped_data.shape!= self.data_buffer[channel, :].shape:
-                #     logging.error("滤波后数据重塑形状与原数据缓冲区通道形状不匹配")
+                #     logger.error("滤波后数据重塑形状与原数据缓冲区通道形状不匹配")
                 #     continue
                 self.data_buffer[channel, :] = reshaped_data
             except Exception as e:
-                logging.error(f"对通道 {channel} 进行 {filter_type} 滤波操作出错: {str(e)}")
+                logger.error(f"对通道 {channel} 进行 {filter_type} 滤波操作出错: {str(e)}")
                 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
