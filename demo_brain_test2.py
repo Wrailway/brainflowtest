@@ -1,0 +1,607 @@
+import logging
+import sys
+import time
+from time import sleep
+
+from PyQt5 import QtCore, QtWidgets
+import matplotlib
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+import numpy as np
+from brainflow.board_shim import BoardIds, BoardShim
+import brainflow
+from brainflow.data_filter import DataFilter, FilterTypes
+from PyQt5.QtCore import QTimer
+
+# 设置日志级别为INFO，获取日志记录器实例
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+class EEGDataVisualizer(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+
+        # 初始化self.fig和self.ax，确保在initUI方法使用之前已经存在
+        self.fig = Figure(figsize=(8, 6))
+        self.ax = self.fig.add_subplot(111)
+
+        self.timer = None
+        self.timer_stopped = False
+       
+        # 新增data_buffer属性初始化，初始为None
+        self.data_buffer = None
+        # 新增buffer_index属性初始化，初始为0
+        self.buffer_index = 0
+
+        # 用于标记是否暂停数据采集和图形更新，初始化为False（未暂停）
+        self.paused = False
+        # 用于存储暂停时的数据缓冲区内容备份，初始为空
+        self.paused_data_buffer = None
+        # 用于存储暂停时的缓冲区索引备份，初始为0
+        self.paused_buffer_index = 0
+        # 停止获取数据
+        self.stop = False
+        self.period = 1
+        
+        # 存储通道复选框的列表
+        self.channel_checkboxes = []
+        self.eeg_channels = []  # 实际的脑电图通道列表，按实际初始化
+        
+        # 滤波器类型
+        self.low_pass_filter = 'Low-Pass Filter [80 HZ]'
+        self.high_pass_filter = 'High-Pass Filter [0.5 HZ]'
+        self.delta_band_pass_filter = 'Delta Band-Pass Filter [0.5~4 HZ]'
+        self.theta_band_pass_filter = 'Theta Band-Pass Filter [4~8 HZ]'
+        self.alpha_band_pass_filter = 'Alpha Band-Pass Filter [8~13 HZ]'
+        self.beta_band_pass_filter = 'Beta Band-Pass Filter [13~30 HZ]'
+        self.gamma_band_pass_filter = 'Gamma Band-Pass Filter [30~45 HZ]'
+        self.current_filter = None
+        self.current_cutoff_freq = 0.0
+        self.current_low_cutoff_freq = 0.0
+        self.current_high_cutoff_freq = 0.0
+        # 滤波器复选框字典，存储每种滤波器的复选框和相关参数输入框等控件
+        self.filter_checkboxes = {
+            self.low_pass_filter: {"checkbox": None},
+            self.high_pass_filter: {"checkbox": None},
+            self.delta_band_pass_filter: {"checkbox": None},
+            self.theta_band_pass_filter: {"checkbox": None},
+            self.alpha_band_pass_filter: {"checkbox": None},
+            self.beta_band_pass_filter: {"checkbox": None},
+            self.gamma_band_pass_filter: {"checkbox": None}
+        }
+        # 低通滤波器默认截止频率
+        self.lowpass_cutoff = 80.0
+        
+        # 高通滤波器默认截止频率
+        self.highpass_cutoff = 0.5
+        
+        # delta带通滤波器截止频率
+        self.delta_low_cutoff = 0.5
+        self.delta_high_cutoff = 4.0
+        
+        # theta带通滤波器截止频率
+        self.theta_low_cutoff = 4.0
+        self.theta_high_cutoff = 8.0
+        
+        # alpha带通滤波器截止频率
+        self.alpha_low_cutoff = 8.0
+        self.alpha_high_cutoff = 13.0
+        
+        # beta带通滤波器截止频率
+        self.beta_low_cutoff = 13.0
+        self.beta_high_cutoff = 30.0
+        
+        # gamma带通滤波器截止频率
+        self.gamma_low_cutoff = 30.0
+        self.gamma_high_cutoff = 45.0
+        
+        self.initUI()
+
+    def initUI(self):
+        main_layout = QtWidgets.QHBoxLayout()
+
+        left_layout = QtWidgets.QVBoxLayout()
+        left_layout.setContentsMargins(20, 20, 20, 20)
+
+        right_layout = QtWidgets.QVBoxLayout()
+
+        # MAC 地址输入框
+        mac_layout = QtWidgets.QHBoxLayout()
+        self.mac_label = QtWidgets.QLabel('MAC address:') #C4:64:E3:D8:E6:D2
+        self.mac_edit = QtWidgets.QLineEdit('C4:64:E3:D8:E6:D2')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        # self.mac_edit = QtWidgets.QLineEdit('')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        mac_layout.addWidget(self.mac_label, 0, alignment=QtCore.Qt.AlignLeft)
+        mac_layout.addWidget(self.mac_edit, 0, alignment=QtCore.Qt.AlignLeft)
+        left_layout.addLayout(mac_layout)
+
+        # board_id 输入框
+        id_layout = QtWidgets.QHBoxLayout()
+        self.board_id_label = QtWidgets.QLabel('Board ID:')
+        self.board_id_edit = QtWidgets.QLineEdit('57')  # 留空让用户输入真实Board ID
+        # self.board_id_edit = QtWidgets.QLineEdit(str(BoardIds.SYNTHETIC_BOARD.value))  # 留空让用户输入真实Board ID
+        id_layout.addWidget(self.board_id_label, 0, alignment=QtCore.Qt.AlignLeft)
+        id_layout.addWidget(self.board_id_edit, 0, alignment=QtCore.Qt.AlignLeft)
+        left_layout.addLayout(id_layout)
+
+        # 创建连接设备按钮
+        self.connect_button = QtWidgets.QPushButton('Connect the EEG device')
+        self.connect_button.setFixedSize(330, 30)
+        self.connect_button.setEnabled(True)
+        self.connect_button.clicked.connect(self.connect_device)
+        left_layout.addWidget(self.connect_button, 0, alignment=QtCore.Qt.AlignLeft)
+
+        # 创建开始采集按钮
+        self.start_button = QtWidgets.QPushButton('Start collecting EEG data')
+        self.start_button.setFixedSize(330, 30)
+        self.start_button.setEnabled(False)
+        self.start_button.clicked.connect(self.start_real_time_collection)
+        left_layout.addWidget(self.start_button, 0, alignment=QtCore.Qt.AlignLeft)
+
+        # 创建暂停按钮
+        op_layout = QtWidgets.QHBoxLayout()
+        op_layout.setSpacing(20)
+        self.pause_button = QtWidgets.QPushButton('Pause')
+        self.pause_button.setFixedSize(80, 30)
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self.pause_real_time_collection)
+        op_layout.addWidget(self.pause_button, 0, alignment=QtCore.Qt.AlignLeft)
+
+        # 创建恢复按钮
+        self.resume_button = QtWidgets.QPushButton('Resume')
+        self.resume_button.setFixedSize(80, 30)
+        self.resume_button.setEnabled(False)
+        self.resume_button.clicked.connect(self.resume_real_time_collection)
+        op_layout.addWidget(self.resume_button, 0, alignment=QtCore.Qt.AlignLeft)
+
+        # 创建停止按钮
+        self.stop_button = QtWidgets.QPushButton('Stop')
+        self.stop_button.setFixedSize(80, 30)
+        self.stop_button.setEnabled(False)
+        self.stop_button.clicked.connect(self.stop_real_time_collection)
+        op_layout.addWidget(self.stop_button, 0, alignment=QtCore.Qt.AlignLeft)
+
+        # 创建布局
+
+        # 创建下拉选择框
+        self.period_combo_box = QtWidgets.QComboBox()
+        # 添加下拉选项示例，这里你可以根据实际需求来设置具体有意义的选项
+        self.period_combo_box.addItems(["1s", "2s","5s", "10s","30s","60s"])
+        self.period_combo_box.setFixedSize(80, 30)
+        self.period_combo_box.setCurrentIndex(0)
+        # 将下拉选择框的当前选项改变信号与对应的处理函数关联，假设处理函数名为handle_stop_selection
+        self.period_combo_box.currentIndexChanged.connect(self.handle_period_selection)
+        op_layout.addWidget(self.period_combo_box, 0, alignment=QtCore.Qt.AlignLeft)
+
+        left_layout.addLayout(op_layout)
+
+        # 创建滤波器复选框及相关输入框布局
+        for filter_type in self.filter_checkboxes:
+            checkbox = QtWidgets.QCheckBox(filter_type)
+            checkbox.stateChanged.connect(self.apply_filter)
+            self.filter_checkboxes[filter_type]["checkbox"] = checkbox
+            left_layout.addWidget(checkbox, 0, alignment=QtCore.Qt.AlignLeft)
+
+        self.set_all_checkboxes_enable(False)
+
+        self.channel_layout = QtWidgets.QVBoxLayout()
+
+        self.canvas = FigureCanvas(self.fig)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        right_layout.addWidget(self.toolbar, alignment=QtCore.Qt.AlignCenter)
+        right_layout.addWidget(self.canvas)
+        right_layout.addLayout(self.channel_layout)
+
+        main_layout.addLayout(left_layout, 1)
+        main_layout.addLayout(right_layout, 9)
+
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
+        self.setLayout(main_layout)
+
+        self.setWindowTitle('EEG Data Demonstration Interface')
+        self.resize(1000, 600)
+        self.show()
+
+        # 初始化设备相关变量
+        self.params = None
+        self.board_shim = None
+        self.lines = []
+        self.eeg_channels = []
+        
+    def handle_period_selection(self):
+        selected_text = self.period_combo_box.currentText()
+        logger.info(f"周期: {selected_text}")
+        # 在这里添加根据选择执行具体停止相关逻辑的代码，例如调用不同的停止函数等
+
+        if selected_text == "1s":
+            self.period = 1
+        elif selected_text == "2s":
+            self.period = 2
+        elif selected_text == "5s":
+            self.period = 5
+        elif selected_text == "10s":
+            self.period = 10
+        elif selected_text == "30s":
+            self.period = 30
+        elif selected_text == "60s":
+            self.period = 60
+        self.update_buffer_size()
+
+    def update_buffer_size(self):
+        # 根据选择的时间调整缓冲区大小
+        sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        buffer_size = int(self.period * sampling_rate)
+        if self.data_buffer is not None:
+            # 保留现有数据并调整缓冲区大小
+            current_data_size = min(self.data_buffer.shape[1], buffer_size)
+            new_data_buffer = np.zeros((len(self.eeg_channels), buffer_size))
+            new_data_buffer[:, -current_data_size:] = self.data_buffer[:, -current_data_size:]
+            self.data_buffer = new_data_buffer
+        else:
+            self.data_buffer = np.zeros((len(self.eeg_channels), buffer_size))
+        self.buffer_index = min(self.buffer_index, buffer_size)
+            
+    def set_all_checkboxes_enable(self, enabled):
+        for filter_type in self.filter_checkboxes.keys():
+            checkbox = self.filter_checkboxes[filter_type]["checkbox"]
+            if checkbox:
+                checkbox.setEnabled(enabled)
+                
+    def connect_device(self):
+        # 获取用户输入的 MAC 地址和 board_id
+        mac_address = self.mac_edit.text()
+        board_id_text = self.board_id_edit.text()
+
+        try:
+            # 设置脑电设备相关参数
+            self.board_id = int(board_id_text)
+            self.params = brainflow.BrainFlowInputParams()
+            self.params.timeout = 10
+            
+            if mac_address:
+                self.params.mac_address = mac_address
+            self.board_shim = BoardShim(self.board_id, self.params)
+            
+            # 准备会话并开始数据采集
+            self.board_shim.prepare_session()
+            
+            # 获取脑电通道列表
+            self.eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
+            
+            # 启用开始采集按钮
+            self.start_button.setEnabled(True)
+            self.connect_button.setEnabled(False)
+            # 弹出连接成功提示框
+            QtWidgets.QMessageBox.information(self, "Connected successfully", "The electroencephalogram (EEG) device has been successfully connected！")
+
+            # 根据通道数量判断使用何种布局来放置通道复选框
+            if len(self.eeg_channels) <= 6:
+                self.create_channel_checkboxes_vertical()
+            else:
+                self.create_channel_checkboxes_grid()
+            self.stop = False
+            self.pause = False
+        except ValueError as ve:
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The format of the entered Board ID is incorrect. Please enter the Board ID in integer type. Error message：{str(ve)}")
+        except brainflow.BrainFlowError as bfe:
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"There is an error in the connection of the electroencephalogram (EEG) device. Possible reasons may include that the device is not turned on, the MAC address is incorrect, or there are driver issues, etc. Error message：{str(bfe)}")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The device connection failed due to an unknown error. Please check the relevant configurations and the device status. Error message：{str(e)}")
+    
+    def remove_all_widgets_from_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+            elif item.layout():
+                self.remove_all_widgets_from_layout(item.layout())
+                
+    def create_channel_checkboxes_vertical(self):
+        self.channel_checkboxes.clear()
+        self.remove_all_widgets_from_layout(self.channel_layout)
+        for channel in self.eeg_channels:
+            checkbox = QtWidgets.QCheckBox(f'Channel {channel}')
+            checkbox.setChecked(True)  # 默认勾选所有通道
+            checkbox.stateChanged.connect(self.update_channel_visibility)
+            self.channel_checkboxes.append(checkbox)
+            self.channel_layout.addWidget(checkbox)
+
+    def create_channel_checkboxes_grid(self):
+        grid_layout = QtWidgets.QGridLayout()
+        row = 0
+        col = 0
+        max_columns = 4  # 最大列数设置为3，可根据需要调整
+        self.channel_checkboxes.clear()
+        self.remove_all_widgets_from_layout(self.channel_layout)
+        for channel in self.eeg_channels:
+            checkbox = QtWidgets.QCheckBox(f'Channel {channel}')
+            if channel==1:
+                checkbox.setChecked(True)  # 默认勾选所有通道
+            else:
+                checkbox.setChecked(False)
+            checkbox.stateChanged.connect(self.update_channel_visibility)
+            self.channel_checkboxes.append(checkbox)
+            grid_layout.addWidget(checkbox, row, col)
+            col += 1
+            if col >= max_columns:
+                col = 0
+                row += 1
+        self.channel_layout.addLayout(grid_layout)
+
+    def start_real_time_collection(self):
+        try:
+            self.board_shim.start_stream()
+            self.pause_button.setEnabled(True)
+            self.resume_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
+            self.connect_button.setEnabled(False)
+            self.stop = False
+            self.timer_stopped = False
+            self.set_all_checkboxes_enable(True)
+
+            # 开始实时更新图形
+            # self.timer = self.startTimer(100)  # 每 100 毫秒更新一次
+            self.timer = QtCore.QTimer(self)
+            self.timer.timeout.connect(self.timerEvent)
+            self.timer.start(100)
+        except brainflow.BrainFlowError as bfe:
+            QtWidgets.QMessageBox.critical(self, "Data acquisition failed to start", f"{str(bfe)}")
+        except ValueError as ve:
+            QtWidgets.QMessageBox.critical(self, "Data buffer initialization failed", str(ve))
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Unknown error", f"{str(e)}")
+
+    def check_filter(self):
+        sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        # logger.info(f'check_filter:self.current_filter= {self.current_filter}')
+        if self.current_filter is not None: 
+            if self.current_filter == self.low_pass_filter:
+                self.apply_filter_to_data(sampling_rate, self.low_pass_filter, self.current_cutoff_freq)
+            elif self.current_filter == self.high_pass_filter:
+                self.apply_filter_to_data(sampling_rate, self.high_pass_filter, self.current_cutoff_freq)
+            else:
+                self.apply_filter_to_data(sampling_rate, self.current_filter, self.current_low_cutoff_freq,self.current_high_cutoff_freq)
+           
+        logger.info(f'check_filter,filter_type={self.current_filter}')
+        
+    def timerEvent(self):
+        """
+        定时器触发时执行的函数，用于从板子获取数据、处理数据并更新波形显示，确保坐标轴显示最近1秒的实时内容。
+        """
+        if self.paused or self.stop:
+            return
+        try:
+            # 从板子获取数据（这里获取1秒的数据点）
+            # sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+            
+            new_data = self.board_shim.get_board_data(250)
+            new_data_channels = new_data[self.eeg_channels, :]
+            # 数据缓冲区管理
+            if self.data_buffer is None:
+               self.data_buffer = new_data_channels
+            else:
+                # 移除旧数据，添加新数据
+                self.data_buffer = np.hstack((self.data_buffer[:, new_data_channels.shape[1]:], new_data_channels))
+            self.buffer_index = self.data_buffer.shape[1]
+            self.check_filter()
+            # 更新图形
+            time_axis = np.linspace(0, int(self.period), self.buffer_index)  # 固定时间轴
+            self.update_plot(time_axis)
+        except brainflow.BrainFlowError as bfe:
+            logging.error(f"从板子获取数据出错: {str(bfe)}")
+        except Exception as e:
+            logging.error(f"处理数据时出现未知错误: {str(e)}")
+
+    def update_plot(self, time_axis):
+        """
+        根据当前数据缓冲区的数据更新图形绘制。
+        """
+        self.ax.clear()
+        
+        for channel in range(len(self.eeg_channels)):
+            if self.channel_checkboxes[channel].isChecked():
+                self.ax.plot(time_axis, self.data_buffer[channel, :self.buffer_index],
+                             label=f'Channel {self.eeg_channels[channel]}')
+        self.ax.set_xlim(0, int(self.period))  # 固定x轴范围
+        self.ax.set_xlabel('Time (s)')
+        self.ax.set_ylabel('Amplitude (uV)')
+        self.ax.set_title('EEG Waveform (Real-time)')
+        self.ax.legend(loc='upper right')
+        self.fig.canvas.draw_idle()
+        
+    def pause_real_time_collection(self):
+        """
+        暂停实时数据采集，备份当前数据缓冲区状态及索引。
+        """
+        if not self.paused:
+            self.paused = True
+            self.paused_data_buffer = self.data_buffer.copy() if self.data_buffer is not None else None
+            self.paused_buffer_index = self.buffer_index
+            self.pause_button.setEnabled(False)
+            self.resume_button.setEnabled(True)
+            self.stop_button.setEnabled(True)
+
+    def resume_real_time_collection(self):
+        """
+        恢复实时数据采集，恢复之前备份的数据缓冲区状态及索引。
+        """
+        if self.paused:
+            self.paused = False
+            self.data_buffer = self.paused_data_buffer
+            self.buffer_index = self.paused_buffer_index
+            self.pause_button.setEnabled(True)
+            self.resume_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
+            if not isinstance(self.timer, QTimer):
+                self.timer = self.startTimer(100)
+            elif not self.timer.isActive():
+                self.timer.start(100)
+
+    def stop_real_time_collection(self):
+        """
+        停止实时数据采集，释放板子资源，清空数据缓冲区及图形绘制内容，重置相关按钮状态。
+        """
+        if self.board_shim is not None:
+            try:
+                self.board_shim.stop_stream()
+                self.board_shim.release_session()
+                if self.timer is not None and self.timer.isActive():
+                    self.timer.stop()
+                    self.timer  = None
+            except brainflow.BrainFlowError as bfe:
+                logging.error(f"停止数据采集或释放资源出错: {str(bfe)}")
+            self.stop = False
+            self.paused = False
+            self.connect_button.setEnabled(True)
+            self.start_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.resume_button.setEnabled(False)
+            self.stop_button.setEnabled(False)
+            self.data_buffer = None
+            self.buffer_index = 0
+            self.ax.clear()
+            self.fig.canvas.draw_idle()
+
+    def update_channel_visibility(self):
+        """
+        根据通道复选框的勾选状态更新图形中通道数据的显示。
+        """
+        sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        if self.buffer_index > 0:
+            time_axis = np.arange(0, self.buffer_index) / sampling_rate
+            self.ax.clear()
+            for channel in range(len(self.eeg_channels)):
+                if self.channel_checkboxes[channel].isChecked():
+                    self.ax.plot(time_axis, self.data_buffer[channel, :self.buffer_index], label=f'Channel {self.eeg_channels[channel]}')
+            self.ax.set_xlabel('Time (s)')
+            self.ax.set_ylabel('Amplitude (uV)')
+            self.ax.set_title('EEG Waveform (Real-time)')
+            self.ax.legend(loc='upper right')
+            self.fig.canvas.draw_idle()
+
+    def apply_filter(self):
+        """
+        根据用户选择的滤波器类型及参数，对当前数据缓冲区的数据应用相应滤波器。
+        """
+        try:
+            sampling_rate = self.board_shim.get_sampling_rate(self.board_id)
+        except brainflow.BrainFlowError as bfe:
+            logging.error(f"获取采样率出错: {str(bfe)}")
+            return
+
+        for filter_type in self.filter_checkboxes:
+            checkbox = self.filter_checkboxes[filter_type]["checkbox"]
+            if checkbox.isChecked():
+                self.current_filter = filter_type
+                if filter_type == self.low_pass_filter:
+                    self.apply_low_pass_filter(sampling_rate, self.lowpass_cutoff)
+                    break
+                elif filter_type == self.high_pass_filter:
+                    self.apply_high_pass_filter(sampling_rate, self.highpass_cutoff)
+                    break
+                elif filter_type == self.delta_band_pass_filter:
+                    self.apply_band_pass_filter(sampling_rate,band_pass_filter=filter_type,low_cutoff=self.delta_low_cutoff,high_cutoff=self.delta_high_cutoff)
+                    break
+                elif filter_type == self.theta_band_pass_filter:
+                    self.apply_band_pass_filter(sampling_rate, band_pass_filter=filter_type,low_cutoff=self.theta_low_cutoff,high_cutoff=self.theta_high_cutoff)
+                    break
+                elif filter_type == self.alpha_band_pass_filter:
+                    self.apply_band_pass_filter(sampling_rate,band_pass_filter=filter_type, low_cutoff=self.alpha_low_cutoff,high_cutoff=self.alpha_high_cutoff)
+                    break
+                elif filter_type == self.beta_band_pass_filter:
+                    self.apply_band_pass_filter(sampling_rate,band_pass_filter=filter_type, low_cutoff=self.beta_low_cutoff,high_cutoff=self.beta_high_cutoff)
+                    break
+                elif filter_type == self.gamma_band_pass_filter:
+                    self.apply_band_pass_filter(sampling_rate, band_pass_filter=filter_type,low_cutoff=self.gamma_low_cutoff,high_cutoff=self.gamma_high_cutoff)
+                    break
+            else:
+                self.current_filter = None
+                self.current_cutoff_freq = 0.0
+                self.current_low_cutoff_freq = 0.0
+                self.current_high_cutoff_freq = 0.0
+
+    def apply_low_pass_filter(self, sampling_rate, default_cutoff=80):
+        """
+        应用低通滤波器，获取截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            self.apply_filter_to_data(sampling_rate, self.low_pass_filter, low_cutoff=default_cutoff)
+            self.current_filter = self.low_pass_filter
+            self.current_cutoff_freq = default_cutoff
+        except ValueError as ve:
+            logging.error(f"低通滤波器截止频率参数转换出错: {str(ve)}")
+
+    def apply_high_pass_filter(self, sampling_rate, default_cutoff=0.5):
+        """
+        应用高通滤波器，获取截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            self.apply_filter_to_data(sampling_rate, self.high_pass_filter, high_cutoff=default_cutoff)
+            self.current_filter = self.high_pass_filter
+            self.current_cutoff_freq = default_cutoff
+        except ValueError as ve:
+            logging.error(f"高通滤波器截止频率参数转换出错: {str(ve)}")
+
+    def apply_band_pass_filter(self, sampling_rate, band_pass_filter,low_cutoff=0.5,high_cutoff=80):
+        """
+        应用带通滤波器，获取低截止频率和高截止频率并调用具体滤波函数，更新相关状态变量。
+        """
+        try:
+            self.apply_filter_to_data(sampling_rate, band_pass_filter, low_cutoff=low_cutoff, high_cutoff=high_cutoff)
+            self.current_filter = band_pass_filter
+            self.current_low_cutoff_freq = low_cutoff
+            self.current_high_cutoff_freq = high_cutoff
+        except (ValueError, IndexError) as e:
+            logging.error(f"带通滤波器截止频率参数获取或转换出错: {str(e)}")
+
+
+    def apply_filter_to_data(self, sampling_rate, filter_type, low_cutoff=0.5,high_cutoff=80.0):
+        """
+        具体执行对数据应用指定滤波器的操作。
+
+        参数:
+        sampling_rate (int): 采样率。
+        filter_type (str): 滤波器类型，如'Low - Pass Filter'等。
+        cutoff_frequencies (tuple): 滤波器相关截止频率参数（不同滤波器参数个数不同）。
+        """
+        if self.data_buffer is None:
+            logging.error("数据缓冲区为空，无法进行滤波操作")
+            return
+
+        if len(self.data_buffer.shape)!= 2:
+            logging.error("数据缓冲区数据格式不符合预期，期望二维数组格式")
+            return
+
+        for channel in range(self.data_buffer.shape[0]):
+            channel_data = self.data_buffer[channel, :].flatten()
+            try:
+                DataFilter.detrend(channel_data, brainflow.DetrendOperations.CONSTANT.value)
+                if filter_type == self.low_pass_filter:
+                    DataFilter.perform_lowpass(channel_data, sampling_rate, low_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.high_pass_filter:
+                    DataFilter.perform_highpass(channel_data, sampling_rate, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.delta_band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, low_cutoff, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.theta_band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, low_cutoff, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.alpha_band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, low_cutoff, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.beta_band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, low_cutoff, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                elif filter_type == self.gamma_band_pass_filter:
+                    DataFilter.perform_bandpass(channel_data, sampling_rate, low_cutoff, high_cutoff, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE, 0)
+                reshaped_data = channel_data.reshape(1, -1)
+                # if reshaped_data.shape!= self.data_buffer[channel, :].shape:
+                #     logger.info(reshaped_data.shape)
+                #     logger.info(self.data_buffer[channel, :].shape)
+                #     logger.error("滤波后数据重塑形状与原数据缓冲区通道形状不匹配")
+                #     continue
+                self.data_buffer[channel, :] = reshaped_data
+            except Exception as e:
+                logger.error(f"对通道 {channel} 进行 {filter_type} 滤波操作出错: {str(e)}")
+                
+if __name__ == '__main__':
+    app = QtWidgets.QApplication(sys.argv)
+    ex = EEGDataVisualizer()
+    sys.exit(app.exec_())
