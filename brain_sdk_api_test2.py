@@ -403,6 +403,11 @@ def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_
         end_time2 = time.time()
         elapsed_time = end_time2 - start_time
         logger.info(f"\n\n 执行case: {result.testsRun}, 耗时： {elapsed_time:.3f}s\n")
+        logger.info(f"fail case:{len(result.failures)}条\n")
+        logger.info(f"skip case:{len(result.skipped)}条\n")
+        logger.info(f"error case:{len(result.errors)}条\n")
+        logger.info(f"pass case:{result.testsRun-len(result.failures)-len(result.skipped)-len(result.errors)}条\n")
+        
         logger.info(f"#################第 {round_num} 轮测试结束，测试结果：{test_result}#############\n")
 
 

@@ -110,6 +110,7 @@ class TestSDKApi(unittest.TestCase):
             self.board_shim.prepare_session()
             self.board_shim.start_stream()
             self.board_shim.stop_stream()
+            time.sleep(20)
             data = self.board_shim.get_board_data()
             self.assertNotEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
             # time.sleep(5)
@@ -188,6 +189,10 @@ def main(mac_address: str, board_id: int,aging_duration:float = 0.5):
         end_time2 = time.time()
         elapsed_time = end_time2 - start_time
         logger.info(f"\n\n 执行case: {result.testsRun}, 耗时： {elapsed_time:.3f}s\n")
+        logger.info(f"fail case:{len(result.failures)}条\n")
+        logger.info(f"skip case:{len(result.skipped)}条\n")
+        logger.info(f"error case:{len(result.errors)}条\n")
+        logger.info(f"pass case:{result.testsRun-len(result.failures)-len(result.skipped)-len(result.errors)}条\n")
         logger.info(f"#################第 {round_num} 轮测试结束，测试结果：{test_result}#############\n")
 
 
@@ -208,7 +213,7 @@ def handle_successful_result():
 
 
 if __name__ == '__main__':
-    # mac_address = '60:77:71:74:E6:B7' # C4:64:E3:D8:E6:D2
-    board_id = BoardIds.SYNTHETIC_BOARD.value
+    mac_address = ' C4:64:E3:D8:E6:D2'#'C4:64:E3:D8:E3:EE' # C4:64:E3:D8:E6:D2
+    board_id = 57
     aging_duration = 0.00001
     main(mac_address='', board_id=board_id,aging_duration=aging_duration)
