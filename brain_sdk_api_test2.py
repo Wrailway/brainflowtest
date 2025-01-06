@@ -22,13 +22,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class TestSDKApi(unittest.TestCase):
-    def __init__(self, mac_address: str, board_id: int, *args, **kwargs):
+    def __init__(self, mac_address: str,mac_address2: str, board_id: int,board_id2: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mac_address = mac_address
+        self.mac_address2 = mac_address2
         self.board_id = board_id
+        self.board_id2 = board_id2
         self.timeout = 10
         # 以下为测试常数定义部分
-        self.CHANNEL_NUM = 7  # 不同产品的通道数目有区分，这里假设真实值是7
+        self.CHANNEL_NUM = 2  # 不同产品的通道数目有区分，这里假设真实值是7
+        self.CHANNEL_NUM2 = 7
         self.SAMPLING_RATE = 250  # 根据产品定义的实际采样率，假设真实值是250
 
     def setUp(self):
@@ -37,11 +40,17 @@ class TestSDKApi(unittest.TestCase):
         params.mac_address = self.mac_address
         params.timeout = self.timeout
         self.board_shim = BoardShim(self.board_id, params)
+        params2 = brainflow.BrainFlowInputParams()
+        params2.mac_address = self.mac_address2
+        params2.timeout = self.timeout
+        self.board_shim2 = BoardShim(self.board_id2, params2)
 
     def tearDown(self):
         logger.info('tearDown')
         if self.board_shim is not None:
             self.board_shim = None
+        if self.board_shim2 is not None:
+            self.board_shim2 = None
 
     def test_prepare_session(self):
         logger.info('test_prepare_session')
@@ -208,28 +217,157 @@ class TestSDKApi(unittest.TestCase):
             pass
 
     def test_concurrent_prepare_session(self):
-        
-        pass
+        logger.info('test_concurrent_prepare_session')
+        try:
+            self.board_shim.prepare_session()
+            self.board_shim2.prepare_session()
+            
+            eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
+            self.assertGreaterEqual(len(eeg_channels), self.CHANNEL_NUM)
+            
+            self.assertEqual(self.board_shim.is_prepared(), True)
+            
+            eeg_channels2 = self.board_shim.get_eeg_channels(self.board_id2)
+            self.assertGreaterEqual(len(eeg_channels2), self.CHANNEL_NUM2)
+            
+            self.assertEqual(self.board_shim2.is_prepared(), True)
+            
+            logger.info("test_concurrent_prepare_session: 会话准备成功，脑电通道数量及其他验证通过")
+            
+        except BrainFlowError as e:
+            logger.error(f"test_concurrent_prepare_session: 其他脑flow业务异常,信息: {e}")
+            self.fail(f"test_concurrent_prepare_session: {e}")
+            
+        except Exception as e:
+            logger.error(f"test_concurrent_prepare_session: 其他运行时异常，信息: {e}")
+            self.fail(f"在test_concurrent_prepare_session中出现其他运行时异常: {e}")
+            
+        finally:
+            if self.board_shim.is_prepared():
+                self.board_shim.release_session()
+            if self.board_shim2.is_prepared():
+                self.board_shim2.release_session()
+                
     def test_concurrent_release_session(self):
-        pass
-    def test_concurrent_start_stream(self):
-        pass
+        logger.info('test_concurrent_release_session')
+        try:
+            self.board_shim.prepare_session()
+            self.board_shim.release_session()
+            self.board_shim2.prepare_session()
+            self.board_shim2.release_session()
+            
+            self.assertEqual(self.board_shim.is_prepared(),False)
+            self.assertEqual(self.board_shim2.is_prepared(),False)
+            logger.info("test_concurrent_release_session: 会话释放成功")
+            
+        except BrainFlowError as e:
+            logger.error(f"test_concurrent_release_session: 脑flow业务异常,信息: {e}")
+            self.fail(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
+            
+        except Exception as e:
+            logger.error(f"test_concurrent_release_session: 其他运行时异常，信息: {e}")
+            self.fail(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
+            
+        finally:
+            pass
+    
+    def test_concurrent_release_session(self):
+        logger.info('test_concurrent_start_stream')
+        try:
+            self.board_shim.prepare_session()
+            self.board_shim.start_stream()
+            self.board_shim2.prepare_session()
+            self.board_shim2.start_stream()
+            
+            data = self.board_shim.get_board_data()
+            self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
+            
+            data2 = self.board_shim2.get_board_data()
+            self.assertEqual(len(data2), self.board_shim2.get_num_rows(board_id=self.board_id2))
+            
+            logger.info("test_concurrent_release_session: 流启动成功，数据验证通过")
+            
+        except BrainFlowError as e:
+            logger.error(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
+            self.fail(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
+            
+        except Exception as e:
+            logger.error(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
+            self.fail(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
+            
+        finally:
+            if self.board_shim.is_prepared():
+                self.board_shim.stop_stream()
+                self.board_shim.release_session()
+            if self.board_shim2.is_prepared():
+                self.board_shim2.stop_stream()
+                self.board_shim2.release_session()
+
     def test_concurrent_stop_stream(self):
-        pass
+        logger.info('test_concurrent_stop_stream')
+        try:
+            self.board_shim.prepare_session()
+            self.board_shim.start_stream()
+            self.board_shim.stop_stream()
+            self.board_shim2.prepare_session()
+            self.board_shim2.start_stream()
+            self.board_shim2.stop_stream()
+            
+            data = self.board_shim.get_board_data()
+            self.assertNotEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
+            data2 = self.board_shim2.get_board_data()
+            self.assertNotEqual(len(data2), self.board_shim2.get_num_rows(board_id=self.board_id2))
+         
+            logger.info("test_concurrent_stop_stream: 流停止成功，资源释放验证通过")
+            
+        except BrainFlowError as e:
+            logger.error(f"test_concurrent_stop_stream: 脑flow业务异常,信息: {e}")
+            self.fail(f"在test_concurrent_stop_stream中出现脑flow业务异常: {e}")
+            
+        except Exception as e:
+            logger.error(f"test_concurrent_stop_stream: 其他运行时异常，信息: {e}")
+            self.fail(f"在test_concurrent_stop_stream中出现其他运行时异常: {e}")
+            
+        finally:
+            if self.board_shim.is_prepared():
+                self.board_shim.release_session()
+            if self.board_shim2.is_prepared():
+                self.board_shim2.release_session()
+    
+    
     def test_concurrent_get_sampling_rate(self):
-        pass
+        logger.info('test_concurrent_get_sampling_rate')
+        try:
+            self.board_shim.prepare_session()
+            sampling_rate = self.board_shim.get_sampling_rate(board_id=self.board_id)
+            self.assertEqual(sampling_rate, self.SAMPLING_RATE)
+            
+            self.board_shim2.prepare_session()
+            sampling_rate2 = self.board_shim2.get_sampling_rate(board_id=self.board_id2)
+            self.assertEqual(sampling_rate2, self.SAMPLING_RATE)
+            logger.info(f"test_concurrent_get_sampling_rate: 获取采样率成功，采样率为 {sampling_rate}")
+            
+        except BrainFlowError as e:
+            logger.error(f"test_concurrent_get_sampling_rate: 脑flow业务异常,信息: {e}")
+            self.fail(f"在test_concurrent_get_sampling_rate中出现脑flow业务异常: {e}")
+            
+        finally:
+            if self.board_shim.is_prepared():
+                self.board_shim.release_session()
+            if self.board_shim2.is_prepared():
+                self.board_shim2.release_session()
     def test_concurrent_get_board_data(self):
         pass
     
     
-def main(mac_address: str, board_id: int,aging_duration:float = 0.5):
+def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_duration:float = 0.5):
     end_time = time.time() + aging_duration * 3600
     round_num = 0
     while time.time() < end_time:
         start_time = time.time()
         test_result = '不通过'
         round_num += 1
-        TempTestClass = type('TempTest', (TestSDKApi,), {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address, board_id, *args, **kwargs)})
+        TempTestClass = type('TempTest', (TestSDKApi,), {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address,mac_address2, board_id,board_id2, *args, **kwargs)})
 
         suite = unittest.TestSuite()
         loader = unittest.TestLoader()
@@ -286,6 +424,9 @@ def handle_successful_result():
 
 if __name__ == '__main__':
     # mac_address = '60:77:71:74:E6:B7' # C4:64:E3:D8:E6:D2
-    board_id = BoardIds.SYNTHETIC_BOARD.value
+    board_id = 57
+    mac_address = 'C4:64:E3:D8:E6:D2'
+    mac_address2 = 'C4:64:E3:D8:E3:EE'
+    board_id2 = 58
     aging_duration = 0.00001
-    main(mac_address='', board_id=board_id,aging_duration=aging_duration)
+    main(mac_address=mac_address,mac_address2=mac_address2, board_id=board_id,board_id2=board_id2,aging_duration=aging_duration)
