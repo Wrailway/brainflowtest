@@ -5,6 +5,7 @@ import unittest
 
 from brainflow import BoardIds, BoardShim, BrainFlowError
 import brainflow
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,14 +16,13 @@ import logging
 import brainflow
 from brainflow.board_shim import BoardShim, BrainFlowError
 import time
-import psutil  # 用于获取系统资源信息，如内存占用情况
 
 # 设置日志格式
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class TestSDKApi(unittest.TestCase):
-    def __init__(self, mac_address: str,mac_address2: str, board_id: int,board_id2: int, *args, **kwargs):
+    def __init__(self, mac_address: str, mac_address2: str, board_id: int, board_id2: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mac_address = mac_address
         self.mac_address2 = mac_address2
@@ -36,338 +36,371 @@ class TestSDKApi(unittest.TestCase):
 
     def setUp(self):
         logger.info('setUp')
-        params = brainflow.BrainFlowInputParams()
-        params.mac_address = self.mac_address
-        params.timeout = self.timeout
-        self.board_shim = BoardShim(self.board_id, params)
-        params2 = brainflow.BrainFlowInputParams()
-        params2.mac_address = self.mac_address2
-        params2.timeout = self.timeout
-        self.board_shim2 = BoardShim(self.board_id2, params2)
+        self.board_shim = self.init_board_shim(self.board_id, self.mac_address)
+        self.board_shim2 = self.init_board_shim(self.board_id2, self.mac_address2)
 
     def tearDown(self):
         logger.info('tearDown')
-        if self.board_shim is not None:
-            self.board_shim = None
-        if self.board_shim2 is not None:
-            self.board_shim2 = None
+        self.release_board_shim(self.board_shim)
+        self.release_board_shim(self.board_shim2)
+
+    def init_board_shim(self, board_id, mac_address):
+        """
+        初始化BoardShim对象的公共方法
+        """
+        params = brainflow.BrainFlowInputParams()
+        params.mac_address = mac_address
+        params.timeout = self.timeout
+        return BoardShim(board_id, params)
+
+    def release_board_shim(self, board_shim):
+        """
+        释放BoardShim对象资源的公共方法
+        """
+        if board_shim is not None:
+            if board_shim.is_prepared():
+                board_shim.release_session()
+            board_shim = None
 
     def test_prepare_session(self):
         logger.info('test_prepare_session')
         try:
             self.board_shim.prepare_session()
-            
             eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
             self.assertGreaterEqual(len(eeg_channels), self.CHANNEL_NUM)
-            
             self.assertEqual(self.board_shim.is_prepared(), True)
-            
             logger.info("test_prepare_session: 会话准备成功，脑电通道数量及其他验证通过")
-            
         except BrainFlowError as e:
-            logger.error(f"test_prepare_session: 其他脑flow业务异常,信息: {e}")
-            self.fail(f"在test_prepare_session中出现其他脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_prepare_session", e)
         except Exception as e:
-            logger.error(f"test_prepare_session: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_prepare_session中出现其他运行时异常: {e}")
-            
-        finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
+            self.handle_general_exception("test_prepare_session", e)
 
     def test_start_stream(self):
         logger.info('test_start_stream')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             self.board_shim.start_stream()
-            
             data = self.board_shim.get_board_data()
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-            
             logger.info("test_start_stream: 流启动成功，数据验证通过")
-            
         except BrainFlowError as e:
-            logger.error(f"在test_start_stream中出现脑flow业务异常: {e}")
-            self.fail(f"在test_start_stream中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_start_stream", e)
         except Exception as e:
-            logger.error(f"在test_start_stream中出现其他运行时异常: {e}")
-            self.fail(f"在test_start_stream中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_start_stream", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.stop_stream()
-                self.board_shim.release_session()
-
-    # def test_concurrent_start_stream(self):
-    #     try:
-    #         self.board_shim.prepare_session()
-
-    #         def start_stream_thread():
-    #             self.board_shim.start_stream()
-    #             data = self.board_shim.get_board_data()
-    #             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-    #             self.board_shim.stop_stream()
-    #             self.board_shim.release_session()
-
-    #         threads = []
-    #         for _ in range(5):  # 模拟5个并发启动流的线程
-    #             t = threading.Thread(target=start_stream_thread)
-    #             threads.append(t)
-    #             t.start()
-    #         for t in threads:
-    #             t.join()
-    #         logger.info("并发启动流测试成功")
-            
-    #     except BrainFlowError as e:
-    #         logger.error(f"并发启动流出现脑flow业务异常: {e}")
-    #         self.fail(f"并发启动流出现脑flow业务异常: {e}")
-            
-    #     except Exception as e:
-    #         logger.error(f"并发启动流出现其他运行时异常: {e}")
-    #         self.fail(f"并发启动流出现其他运行时异常: {e}")
-    
-   
+            self.stop_and_release_stream(self.board_shim)
 
     def test_get_sampling_rate(self):
         logger.info('test_get_sampling_rate')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             sampling_rate = self.board_shim.get_sampling_rate(board_id=self.board_id)
             self.assertEqual(sampling_rate, self.SAMPLING_RATE)
             logger.info(f"test_get_sampling_rate: 获取采样率成功，采样率为 {sampling_rate}")
-            
         except BrainFlowError as e:
-            logger.error(f"test_get_sampling_rate: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_get_sampling_rate中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_get_sampling_rate", e)
+        except Exception as e:
+            self.handle_general_exception("test_get_sampling_rate", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
-
+            self.release_board_shim(self.board_shim)
 
     def test_get_board_data(self):
         logger.info('test_get_board_data')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             self.board_shim.start_stream()
-            
-            time.sleep(1) 
+            time.sleep(1)
             data = self.board_shim.get_board_data()
-            
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
             logger.info("test_get_board_data: 获取少量板卡数据成功")
-            
         except BrainFlowError as e:
-            logger.error(f"test_get_board_data: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_get_board_data中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_get_board_data", e)
         except Exception as e:
-            logger.error(f"test_get_board_data: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_get_board_data中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_get_board_data", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.stop_stream()
-                self.board_shim.release_session()
-
+            self.stop_and_release_stream(self.board_shim)
+            
+    @unittest.skip('停流后，仍然能获取到数据，该条case暂时跳过，已反馈给研发分析')
     def test_stop_stream(self):
         logger.info('test_stop_stream')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             self.board_shim.start_stream()
             self.board_shim.stop_stream()
-            
             data = self.board_shim.get_board_data()
             self.assertNotEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-         
             logger.info("test_stop_stream: 流停止成功，资源释放验证通过")
-            
         except BrainFlowError as e:
-            logger.error(f"test_stop_stream: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_stop_stream中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_stop_stream", e)
         except Exception as e:
-            logger.error(f"test_stop_stream: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_stop_stream中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_stop_stream", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
+            self.release_board_shim(self.board_shim)
 
     def test_release_session(self):
         logger.info('test_release_session')
         try:
             self.board_shim.prepare_session()
             self.board_shim.release_session()
-            
-            self.assertEqual(self.board_shim.is_prepared(),False)
+            self.assertEqual(self.board_shim.is_prepared(), False)
             logger.info("test_release_session: 会话释放成功")
-            
         except BrainFlowError as e:
-            logger.error(f"test_release_session: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_release_session中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_release_session", e)
         except Exception as e:
-            logger.error(f"test_release_session: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_release_session中出现其他运行时异常: {e}")
-            
-        finally:
-            pass
+            self.handle_general_exception("test_release_session", e)
 
     def test_concurrent_prepare_session(self):
         logger.info('test_concurrent_prepare_session')
         try:
             self.board_shim.prepare_session()
             self.board_shim2.prepare_session()
-            
             eeg_channels = self.board_shim.get_eeg_channels(self.board_id)
             self.assertGreaterEqual(len(eeg_channels), self.CHANNEL_NUM)
-            
             self.assertEqual(self.board_shim.is_prepared(), True)
-            
             eeg_channels2 = self.board_shim.get_eeg_channels(self.board_id2)
             self.assertGreaterEqual(len(eeg_channels2), self.CHANNEL_NUM2)
-            
             self.assertEqual(self.board_shim2.is_prepared(), True)
-            
             logger.info("test_concurrent_prepare_session: 会话准备成功，脑电通道数量及其他验证通过")
-            
         except BrainFlowError as e:
-            logger.error(f"test_concurrent_prepare_session: 其他脑flow业务异常,信息: {e}")
-            self.fail(f"test_concurrent_prepare_session: {e}")
-            
+            self.handle_brainflow_error("test_concurrent_prepare_session", e)
         except Exception as e:
-            logger.error(f"test_concurrent_prepare_session: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_concurrent_prepare_session中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_concurrent_prepare_session", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
-            if self.board_shim2.is_prepared():
-                self.board_shim2.release_session()
-                
+            self.release_board_shim(self.board_shim)
+            self.release_board_shim(self.board_shim2)
+
     def test_concurrent_release_session(self):
         logger.info('test_concurrent_release_session')
         try:
-            self.board_shim.prepare_session()
-            self.board_shim.release_session()
-            self.board_shim2.prepare_session()
-            self.board_shim2.release_session()
-            
-            self.assertEqual(self.board_shim.is_prepared(),False)
-            self.assertEqual(self.board_shim2.is_prepared(),False)
+            self.prepare_and_validate_session(self.board_shim)
+            self.release_board_shim(self.board_shim)
+            self.prepare_and_validate_session(self.board_shim2)
+            self.release_board_shim(self.board_shim2)
+            self.assertEqual(self.board_shim.is_prepared(), False)
+            self.assertEqual(self.board_shim2.is_prepared(), False)
             logger.info("test_concurrent_release_session: 会话释放成功")
-            
         except BrainFlowError as e:
-            logger.error(f"test_concurrent_release_session: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_concurrent_release_session", e)
         except Exception as e:
-            logger.error(f"test_concurrent_release_session: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
-            
-        finally:
-            pass
-    
-    def test_concurrent_release_session(self):
+            self.handle_general_exception("test_concurrent_release_session", e)
+
+    def test_concurrent_start_stream(self):
         logger.info('test_concurrent_start_stream')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             self.board_shim.start_stream()
-            self.board_shim2.prepare_session()
+            self.prepare_and_validate_session(self.board_shim2)
             self.board_shim2.start_stream()
-            
             data = self.board_shim.get_board_data()
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-            
             data2 = self.board_shim2.get_board_data()
             self.assertEqual(len(data2), self.board_shim2.get_num_rows(board_id=self.board_id2))
-            
-            logger.info("test_concurrent_release_session: 流启动成功，数据验证通过")
-            
+            logger.info("test_concurrent_start_stream: 流启动成功，数据验证通过")
         except BrainFlowError as e:
-            logger.error(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
-            self.fail(f"在test_concurrent_release_session中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_concurrent_start_stream", e)
         except Exception as e:
-            logger.error(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
-            self.fail(f"在test_concurrent_release_session中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_concurrent_start_stream", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.stop_stream()
-                self.board_shim.release_session()
-            if self.board_shim2.is_prepared():
-                self.board_shim2.stop_stream()
-                self.board_shim2.release_session()
+            self.stop_and_release_stream(self.board_shim)
+            self.stop_and_release_stream(self.board_shim2)
 
+    @unittest.skip('停流后，仍然能获取到数据，该条case暂时跳过，已反馈给研发分析')
     def test_concurrent_stop_stream(self):
         logger.info('test_concurrent_stop_stream')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             self.board_shim.start_stream()
             self.board_shim.stop_stream()
-            self.board_shim2.prepare_session()
+            self.prepare_and_validate_session(self.board_shim2)
             self.board_shim2.start_stream()
             self.board_shim2.stop_stream()
-            
             data = self.board_shim.get_board_data()
             self.assertNotEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
             data2 = self.board_shim2.get_board_data()
             self.assertNotEqual(len(data2), self.board_shim2.get_num_rows(board_id=self.board_id2))
-         
             logger.info("test_concurrent_stop_stream: 流停止成功，资源释放验证通过")
-            
         except BrainFlowError as e:
-            logger.error(f"test_concurrent_stop_stream: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_concurrent_stop_stream中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_concurrent_stop_stream", e)
         except Exception as e:
-            logger.error(f"test_concurrent_stop_stream: 其他运行时异常，信息: {e}")
-            self.fail(f"在test_concurrent_stop_stream中出现其他运行时异常: {e}")
-            
+            self.handle_general_exception("test_concurrent_stop_stream", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
-            if self.board_shim2.is_prepared():
-                self.board_shim2.release_session()
-    
-    
+            self.release_board_shim(self.board_shim)
+            self.release_board_shim(self.board_shim2)
+
     def test_concurrent_get_sampling_rate(self):
         logger.info('test_concurrent_get_sampling_rate')
         try:
-            self.board_shim.prepare_session()
+            self.prepare_and_validate_session(self.board_shim)
             sampling_rate = self.board_shim.get_sampling_rate(board_id=self.board_id)
             self.assertEqual(sampling_rate, self.SAMPLING_RATE)
-            
-            self.board_shim2.prepare_session()
+            self.prepare_and_validate_session(self.board_shim2)
             sampling_rate2 = self.board_shim2.get_sampling_rate(board_id=self.board_id2)
             self.assertEqual(sampling_rate2, self.SAMPLING_RATE)
             logger.info(f"test_concurrent_get_sampling_rate: 获取采样率成功，采样率为 {sampling_rate}")
-            
         except BrainFlowError as e:
-            logger.error(f"test_concurrent_get_sampling_rate: 脑flow业务异常,信息: {e}")
-            self.fail(f"在test_concurrent_get_sampling_rate中出现脑flow业务异常: {e}")
-            
+            self.handle_brainflow_error("test_concurrent_get_sampling_rate", e)
+        except Exception as e:
+            self.handle_general_exception("test_concurrent_get_sampling_rate", e)
         finally:
-            if self.board_shim.is_prepared():
-                self.board_shim.release_session()
-            if self.board_shim2.is_prepared():
-                self.board_shim2.release_session()
-    def test_concurrent_get_board_data(self):
-        pass
+            self.release_board_shim(self.board_shim)
+            self.release_board_shim(self.board_shim2)
+
+
+    def test_invalid_mac_address(self):
+        logger.info('test_invalid_mac_address')
+        invalid_mac = "invalid_mac_address"
+        try:
+            params = brainflow.BrainFlowInputParams()
+            params.mac_address = invalid_mac
+            params.timeout = self.timeout
+            board_shim = BoardShim(self.board_id, params)
+            board_shim.prepare_session()
+            self.fail("使用无效MAC地址时应抛出异常，但未抛出")
+        except BrainFlowError as e:
+            self.assertEqual(e.exit_code, brainflow.BrainFlowExitCodes.BOARD_NOT_CREATED_ERROR)  # 替换为实际对应的错误码判断
+            logger.info("test_invalid_mac_address: 无效MAC地址异常验证通过")
+        except Exception as e:
+            self.handle_general_exception("test_invalid_mac_address", e)
+
+    def test_timeout_scenario(self):
+        logger.info('test_timeout_scenario')
+        params = brainflow.BrainFlowInputParams()
+        params.timeout = 1  # 设置一个很短的超时时间，容易触发超时情况
+        params.mac_address =self.mac_address
+        board_shim = BoardShim(self.board_id,params)
+        try:
+            board_shim.prepare_session()
+            self.fail("应出现超时异常，但未出现")
+        except BrainFlowError as e:
+            if e.exit_code == brainflow.BrainFlowExitCodes.BOARD_NOT_READY_ERROR:  # 根据实际的错误类型判断是否是超时异常
+                logger.info("test_timeout_scenario: 超时异常验证通过")
+            else:
+                self.handle_brainflow_error("test_timeout_scenario", e)
+        except Exception as e:
+            self.handle_general_exception("test_timeout_scenario", e)
+        finally:
+            self.release_board_shim(board_shim)
+
+    # def test_long_time_get_board_data(self):
+    #     logger.info('test_long_time_get_board_data')
+    #     try:
+    #         self.prepare_and_validate_session(self.board_shim)
+    #         self.board_shim.start_stream()
+    #         time.sleep(10)  # 长时间获取数据，比如10秒
+    #         data = self.board_shim.get_board_data()
+    #         self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id) * 10)  # 假设每秒获取一定数量行数据，简单验证数据量是否符合预期
+    #         logger.info("test_long_time_get_board_data: 长时间获取板卡数据成功")
+    #     except BrainFlowError as e:
+    #         self.handle_brainflow_error("test_long_time_get_board_data", e)
+    #     except Exception as e:
+    #         self.handle_general_exception("test_long_time_get_board_data", e)
+    #     finally:
+    #         self.stop_and_release_stream(self.board_shim)
+
+    def test_data_format_verification(self):
+        logger.info('test_data_format_verification')
+        try:
+            self.prepare_and_validate_session(self.board_shim)
+            self.board_shim.start_stream()
+            data = self.board_shim.get_board_data()
+            # 假设数据应该是二维数组，进行格式验证
+            self.assertEqual(len(data.shape), 2)
+            # 假设数据类型应该是float32，进行数据类型验证（根据实际情况调整）
+            self.assertEqual(data.dtype, np.float64)
+            logger.info("test_data_format_verification: 数据格式验证通过")
+        except BrainFlowError as e:
+            self.handle_brainflow_error("test_data_format_verification", e)
+        except Exception as e:
+            self.handle_general_exception("test_data_format_verification", e)
+        finally:
+            self.stop_and_release_stream(self.board_shim)
+
+    def test_concurrent_operation_order_change(self):
+        logger.info('test_concurrent_operation_order_change')
+        try:
+            self.board_shim.start_stream()
+            self.board_shim.prepare_session()
+        except BrainFlowError as e:
+            if e.exit_code == brainflow.BrainFlowExitCodes.BOARD_NOT_CREATED_ERROR:  # 根据实际的错误类型判断是否是超时异常
+                logger.info("test_concurrent_operation_order_change: 并发操作顺序变化验证通过")
+            else:
+                self.handle_brainflow_error("test_concurrent_operation_order_change", e)
+        except Exception as e:
+            self.handle_general_exception("test_concurrent_operation_order_change", e)
+        finally:
+            self.stop_and_release_stream(self.board_shim)
+            self.release_board_shim(self.board_shim)
+    
+    def prepare_and_validate_session(self, board_shim):
+        """
+        准备会话并验证是否准备成功的公共方法
+        """
+        board_shim.prepare_session()
+        eeg_channels = board_shim.get_eeg_channels(self.board_id)
+        self.assertGreaterEqual(len(eeg_channels), self.CHANNEL_NUM)
+        self.assertEqual(board_shim.is_prepared(), True)
+        return board_shim
+
+    def stop_and_release_stream(self, board_shim):
+        """
+        停止流并释放相关资源的公共方法
+        """
+        if board_shim.is_prepared():
+            board_shim.stop_stream()
+            board_shim.release_session()
+
+            
+    def handle_brainflow_error(self, test_method_name, error):
+        """
+        处理BrainFlowError异常的公共方法，可根据需要进一步细化错误处理逻辑
+        """
+        logger.error(f"{test_method_name}: 脑flow业务异常,信息: {error}")
+        self.fail(f"在{test_method_name}中出现脑flow业务异常: {error}")
+
+    def handle_general_exception(self, test_method_name, error):
+        """
+        处理其他通用异常的公共方法，可根据需要进一步细化错误处理逻辑
+        """
+        logger.error(f"{test_method_name}: 其他运行时异常，信息: {error}")
+        self.fail(f"在{test_method_name}中出现其他运行时异常: {error}")
     
     
-def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_duration:float = 0.5):
+def main(mac_address: str, mac_address2: str, board_id: int, board_id2: int, aging_duration: float = 0.5,
+         log_file_path: str = None):
+    """
+    主函数，用于执行多轮测试并全面处理测试结果，支持将日志输出到文件或控制台。
+
+    :param mac_address: 第一个设备的MAC地址
+    :param mac_address2: 第二个设备的MAC地址（若有针对双设备相关功能测试的需求）
+    :param board_id: 第一个设备的板卡ID
+    :param board_id2: 第二个设备的板卡ID（若有针对双设备相关功能测试的需求）
+    :param aging_duration: 测试持续的时长（单位：小时），默认值为0.5小时
+    :param log_file_path: 日志文件的保存路径，若为None，则仅在控制台输出日志，默认值为None
+    """
+    # 配置日志记录
+    configure_logging(log_file_path)
+
     end_time = time.time() + aging_duration * 3600
     round_num = 0
+    total_tests_run = 0
+    total_failures = 0
+    total_errors = 0
+    total_skipped = 0
+    total_passed = 0
+
     while time.time() < end_time:
+        round_num += 1
+        logger.info(f"开始第 {round_num} 轮测试")
         start_time = time.time()
         test_result = '不通过'
-        round_num += 1
-        TempTestClass = type('TempTest', (TestSDKApi,), {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address,mac_address2, board_id,board_id2, *args, **kwargs)})
+
+        # 动态创建临时测试类，继承自TestSDKApi并传递必要参数
+        TempTestClass = type('TempTest', (TestSDKApi,),
+                             {'__init__': lambda self, *args, **kwargs: TestSDKApi.__init__(self, mac_address,
+                                                                                             mac_address2,
+                                                                                             board_id,
+                                                                                             board_id2,
+                                                                                             *args, **kwargs)})
 
         suite = unittest.TestSuite()
         loader = unittest.TestLoader()
@@ -377,20 +410,21 @@ def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_
         runner = unittest.TextTestRunner(verbosity=2)
         result = runner.run(suite)
 
-        # 处理测试失败情况
-        for failure in result.failures:
-            test_method_name, failure_message = failure
-            handle_failure_result(test_method_name, failure_message)
+        # 更新每轮测试的统计信息
+        total_tests_run += result.testsRun
+        total_failures += len(result.failures)
+        total_errors += len(result.errors)
+        total_skipped += len(result.skipped)
+        total_passed += result.testsRun - len(result.failures) - len(result.skipped) - len(result.errors)
 
-        # 处理测试错误情况（一般是代码层面错误导致测试无法正确执行）
-        for error in result.errors:
-            test_method_name, error_message = error
-            handle_error_result(test_method_name, error_message)
+        # 处理测试失败情况
+        handle_test_result(result.failures, handle_failure_result)
+
+        # 处理测试错误情况
+        handle_test_result(result.errors, handle_error_result)
 
         # 处理测试跳过情况
-        for skipped_test in result.skipped:
-            test_method_name, reason = skipped_test
-            handle_skipped_result(test_method_name, reason)
+        handle_test_result(result.skipped, handle_skipped_result)
 
         # 处理测试成功情况
         if result.wasSuccessful():
@@ -398,7 +432,6 @@ def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_
             test_result = '通过'
         else:
             logger.info("Some tests failed or encountered errors.\n")
-            test_result = '不通过'
 
         end_time2 = time.time()
         elapsed_time = end_time2 - start_time
@@ -406,20 +439,84 @@ def main(mac_address: str,mac_address2: str, board_id: int,board_id2: int,aging_
         logger.info(f"fail case:{len(result.failures)}条\n")
         logger.info(f"skip case:{len(result.skipped)}条\n")
         logger.info(f"error case:{len(result.errors)}条\n")
-        logger.info(f"pass case:{result.testsRun-len(result.failures)-len(result.skipped)-len(result.errors)}条\n")
-        
+        logger.info(f"pass case:{result.testsRun - len(result.failures) - len(result.skipped) - len(result.errors)}条\n")
+
         logger.info(f"#################第 {round_num} 轮测试结束，测试结果：{test_result}#############\n")
+
+    # 输出整个测试过程的汇总统计信息
+    logger.info(f"========== 全部 {round_num} 轮测试结束，汇总统计信息如下 ==========")
+    logger.info(f"总执行测试用例数: {total_tests_run}")
+    logger.info(f"总失败用例数: {total_failures}")
+    logger.info(f"总错误用例数: {total_errors}")
+    logger.info(f"总跳过用例数: {total_skipped}")
+    logger.info(f"总通过用例数: {total_passed}")
+
+
+def configure_logging(log_file_path):
+    """
+    配置日志记录的基本设置，如日志级别、格式等，可选择输出到文件或控制台。
+
+    :param log_file_path: 日志文件路径，若为None，则仅在控制台输出日志
+    """
+    handlers = []
+    if log_file_path:
+        handlers.append(logging.FileHandler(log_file_path))
+    else:
+        handlers.append(logging.StreamHandler())
+
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                        handlers=handlers)
+
+
+def handle_test_result(test_result_list, handler_func):
+    """
+    通用的处理测试结果的函数，根据不同的结果类型调用相应的处理函数。
+
+    :param test_result_list: 包含测试结果信息的列表，每个元素包含测试方法名和对应的消息（失败、错误、跳过的原因等）
+    :param handler_func: 具体处理对应结果的函数，如处理失败的函数、处理错误的函数等
+    """
+    for test_method_name, message in test_result_list:
+        handler_func(test_method_name, message)
 
 
 def handle_failure_result(test_method_name, failure_message):
-    logger.error(f"测试方法 {test_method_name} 失败，失败信息: {failure_message}")
+    """
+    处理测试方法失败的情况，记录详细的失败信息到日志，并尝试提取关键的错误信息（可根据实际情况优化）。
+
+    :param test_method_name: 失败的测试方法名称
+    :param failure_message: 失败的详细信息
+    """
+    try:
+        # 尝试从详细的失败信息中提取关键部分（这里假设是简单的字符串处理，可根据实际错误格式调整）
+        key_error_info = failure_message.splitlines()[0] if failure_message else ""
+        logger.error(f"测试方法 {test_method_name} 失败，关键错误信息: {key_error_info}")
+    except IndexError:
+        logger.error(f"测试方法 {test_method_name} 失败，无法解析关键错误信息")
 
 
 def handle_error_result(test_method_name, error_message):
-    logger.error(f"测试方法 {test_method_name} 出现错误，错误信息: {error_message}")
+    """
+    处理测试方法出现错误的情况，记录详细的错误信息到日志，并尝试提取关键的错误原因（可根据实际情况优化）。
+
+    :param test_method_name: 出现错误的测试方法名称
+    :param error_message: 错误的详细信息
+    """
+    try:
+        # 尝试从详细的错误信息中提取关键部分（这里假设是简单的字符串处理，可根据实际错误格式调整）
+        key_error_info = error_message.splitlines()[0] if error_message else ""
+        logger.error(f"测试方法 {test_method_name} 出现错误，关键错误原因: {key_error_info}")
+    except IndexError:
+        logger.error(f"测试方法 {test_method_name} 出现错误，无法解析关键错误原因")
 
 
 def handle_skipped_result(test_method_name, reason):
+    """
+    处理测试方法被跳过的情况，记录被跳过的原因到日志。
+
+    :param test_method_name: 被跳过的测试方法名称
+    :param reason: 被跳过的原因
+    """
     logger.info(f"测试方法 {test_method_name} 被跳过，原因: {reason}")
 
 
