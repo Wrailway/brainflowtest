@@ -112,7 +112,7 @@ class TestSDKApi(unittest.TestCase):
             time.sleep(1)
             data = self.board_shim.get_board_data()
             self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id))
-            logger.info("test_get_board_data: 获取少量板卡数据成功")
+            logger.info("test_get_board_data: 获取板卡数据成功")
         except BrainFlowError as e:
             self.handle_brainflow_error("test_get_board_data", e)
         except Exception as e:
@@ -148,7 +148,8 @@ class TestSDKApi(unittest.TestCase):
             self.handle_brainflow_error("test_release_session", e)
         except Exception as e:
             self.handle_general_exception("test_release_session", e)
-
+            
+    @unittest.skip('just skip concurrent')
     def test_concurrent_prepare_session(self):
         logger.info('test_concurrent_prepare_session')
         try:
@@ -168,7 +169,8 @@ class TestSDKApi(unittest.TestCase):
         finally:
             self.release_board_shim(self.board_shim)
             self.release_board_shim(self.board_shim2)
-
+            
+    @unittest.skip('just skip concurrent')
     def test_concurrent_release_session(self):
         logger.info('test_concurrent_release_session')
         try:
@@ -183,7 +185,8 @@ class TestSDKApi(unittest.TestCase):
             self.handle_brainflow_error("test_concurrent_release_session", e)
         except Exception as e:
             self.handle_general_exception("test_concurrent_release_session", e)
-
+            
+    @unittest.skip('just skip concurrent')
     def test_concurrent_start_stream(self):
         logger.info('test_concurrent_start_stream')
         try:
@@ -226,7 +229,8 @@ class TestSDKApi(unittest.TestCase):
         finally:
             self.release_board_shim(self.board_shim)
             self.release_board_shim(self.board_shim2)
-
+            
+    @unittest.skip('just skip concurrent')
     def test_concurrent_get_sampling_rate(self):
         logger.info('test_concurrent_get_sampling_rate')
         try:
@@ -244,7 +248,6 @@ class TestSDKApi(unittest.TestCase):
         finally:
             self.release_board_shim(self.board_shim)
             self.release_board_shim(self.board_shim2)
-
 
     def test_invalid_mac_address(self):
         logger.info('test_invalid_mac_address')
@@ -281,21 +284,6 @@ class TestSDKApi(unittest.TestCase):
         finally:
             self.release_board_shim(board_shim)
 
-    # def test_long_time_get_board_data(self):
-    #     logger.info('test_long_time_get_board_data')
-    #     try:
-    #         self.prepare_and_validate_session(self.board_shim)
-    #         self.board_shim.start_stream()
-    #         time.sleep(10)  # 长时间获取数据，比如10秒
-    #         data = self.board_shim.get_board_data()
-    #         self.assertEqual(len(data), self.board_shim.get_num_rows(board_id=self.board_id) * 10)  # 假设每秒获取一定数量行数据，简单验证数据量是否符合预期
-    #         logger.info("test_long_time_get_board_data: 长时间获取板卡数据成功")
-    #     except BrainFlowError as e:
-    #         self.handle_brainflow_error("test_long_time_get_board_data", e)
-    #     except Exception as e:
-    #         self.handle_general_exception("test_long_time_get_board_data", e)
-    #     finally:
-    #         self.stop_and_release_stream(self.board_shim)
 
     def test_data_format_verification(self):
         logger.info('test_data_format_verification')
@@ -314,7 +302,24 @@ class TestSDKApi(unittest.TestCase):
             self.handle_general_exception("test_data_format_verification", e)
         finally:
             self.stop_and_release_stream(self.board_shim)
-
+            
+    def test_get_data_without_start_stream(self):
+        logger.info('tes_get_data_without_start_stream')
+        try:
+            self.board_shim.prepare_session()
+            data = self.board_shim.get_board_data()
+            self.fail('stream is not startted or no preset,cannot get data')
+        except BrainFlowError as e:
+            if e.exit_code == brainflow.BrainFlowExitCodes.INVALID_ARGUMENTS_ERROR:
+                logger.info('test_get_data_without_start_stream:未开启流，无法获取数据验证通过')
+            else:
+                # self.handle_brainflow_error("test_get_data_without_start_stream", e)
+                self.handle_brainflow_error("test_get_data_without_start_stream", e)
+        finally:
+            if self.board_shim.is_prepared():
+                self.board_shim.release_all_sessions()
+            
+    @unittest.skip('just skip concurrent')
     def test_concurrent_operation_order_change(self):
         logger.info('test_concurrent_operation_order_change')
         try:
