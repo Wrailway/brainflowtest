@@ -20,6 +20,23 @@ import time
 # 设置日志格式
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+# 获取当前时间的时间戳（精确到秒）
+timestamp = str(int(time.time()))
+# 获取当前日期，格式为年-月-日
+current_date = time.strftime("%Y-%m-%d", time.localtime())
+# 构建完整的文件名，包含路径、日期和时间戳
+log_file_name = f'./TestSDKApi_log_{current_date}_{timestamp}.txt'
+
+# 创建一个文件处理器，用于将日志写入文件
+file_handler = logging.FileHandler(log_file_name,encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+
+# 创建一个日志格式
+log_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(log_format)
+
+# 将文件处理器添加到日志记录器
+logger.addHandler(file_handler)
 
 class TestSDKApi(unittest.TestCase):
     def __init__(self, *args, **kwargs):
@@ -371,7 +388,7 @@ class TestSDKApi(unittest.TestCase):
 
     
 def main(aging_duration: float = 0.5,
-         log_file_path: str = None):
+         log_file_path: str = 'log.txt'):
     """
     主函数，用于执行多轮测试并全面处理测试结果，支持将日志输出到文件或控制台。
 
@@ -382,8 +399,6 @@ def main(aging_duration: float = 0.5,
     :param aging_duration: 测试持续的时长（单位：小时），默认值为0.5小时
     :param log_file_path: 日志文件的保存路径，若为None，则仅在控制台输出日志，默认值为None
     """
-    # 配置日志记录
-    configure_logging(log_file_path)
 
     end_time = time.time() + aging_duration * 3600
     round_num = 0
@@ -450,23 +465,6 @@ def main(aging_duration: float = 0.5,
     logger.info(f"总错误用例数: {total_errors}")
     logger.info(f"总跳过用例数: {total_skipped}")
     logger.info(f"总通过用例数: {total_passed}")
-
-
-def configure_logging(log_file_path):
-    """
-    配置日志记录的基本设置，如日志级别、格式等，可选择输出到文件或控制台。
-
-    :param log_file_path: 日志文件路径，若为None，则仅在控制台输出日志
-    """
-    handlers = []
-    if log_file_path:
-        handlers.append(logging.FileHandler(log_file_path))
-    else:
-        handlers.append(logging.StreamHandler())
-
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        handlers=handlers)
 
 
 def handle_test_result(test_result_list, handler_func):
