@@ -109,7 +109,7 @@ class EEGDataVisualizer(QtWidgets.QWidget):
         # MAC 地址输入框
         mac_layout = QtWidgets.QHBoxLayout()
         self.mac_label = QtWidgets.QLabel('MAC address:') #C4:64:E3:D8:E6:D2
-        self.mac_edit = QtWidgets.QLineEdit('C4:64:E3:D8:E6:D2')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
+        self.mac_edit = QtWidgets.QLineEdit('C4:64:E3:D8:E6:D2')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,c 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
         # self.mac_edit = QtWidgets.QLineEdit('')  # 留空让用户输入真实MAC地址 84:27:12:17:BC:D8,,,60:77:71:74:E6:B7 84:27:12:14:C6:E5  84:BA:20:6E:3C:1E
         mac_layout.addWidget(self.mac_label, 0, alignment=QtCore.Qt.AlignLeft)
         mac_layout.addWidget(self.mac_edit, 0, alignment=QtCore.Qt.AlignLeft)
@@ -283,11 +283,11 @@ class EEGDataVisualizer(QtWidgets.QWidget):
             self.stop = False
             self.pause = False
         except ValueError as ve:
-            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The format of the entered Board ID is incorrect. Please enter the Board ID in integer type. Error message：{str(ve)}")
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The format of the entered Board ID is incorrect. Error message：{str(ve)}")
         except brainflow.BrainFlowError as bfe:
-            QtWidgets.QMessageBox.critical(self, "Connection failed", f"There is an error in the connection of the electroencephalogram (EEG) device. Possible reasons may include that the device is not turned on, the MAC address is incorrect, or there are driver issues, etc. Error message：{str(bfe)}")
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"There is an error in the connection of the electroencephalogram (EEG) device. Error message：{str(bfe)}")
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The device connection failed due to an unknown error. Please check the relevant configurations and the device status. Error message：{str(e)}")
+            QtWidgets.QMessageBox.critical(self, "Connection failed", f"The device connection failed due to an unknown error. Error message：{str(e)}")
     
     def remove_all_widgets_from_layout(self, layout):
         while layout.count():
