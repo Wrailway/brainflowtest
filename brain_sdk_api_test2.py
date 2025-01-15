@@ -387,17 +387,10 @@ class TestSDKApi(unittest.TestCase):
                 self.board_shim2.release_session()
 
     
-def main(aging_duration: float = 0.5,
-         log_file_path: str = 'log.txt'):
+def main(aging_duration: float = 0.5):
     """
     主函数，用于执行多轮测试并全面处理测试结果，支持将日志输出到文件或控制台。
-
-    :param mac_address: 第一个设备的MAC地址
-    :param mac_address2: 第二个设备的MAC地址（若有针对双设备相关功能测试的需求）
-    :param board_id: 第一个设备的板卡ID
-    :param board_id2: 第二个设备的板卡ID（若有针对双设备相关功能测试的需求）
     :param aging_duration: 测试持续的时长（单位：小时），默认值为0.5小时
-    :param log_file_path: 日志文件的保存路径，若为None，则仅在控制台输出日志，默认值为None
     """
 
     end_time = time.time() + aging_duration * 3600
@@ -451,10 +444,10 @@ def main(aging_duration: float = 0.5,
         end_time2 = time.time()
         elapsed_time = end_time2 - start_time
         logger.info(f"\n\n 执行case: {result.testsRun}, 耗时： {elapsed_time:.3f}s\n")
-        logger.info(f"fail case:{len(result.failures)}条\n")
-        logger.info(f"skip case:{len(result.skipped)}条\n")
-        logger.info(f"error case:{len(result.errors)}条\n")
-        logger.info(f"pass case:{result.testsRun - len(result.failures) - len(result.skipped) - len(result.errors)}条\n")
+        # logger.info(f"fail case:{len(result.failures)}条\n")
+        # logger.info(f"skip case:{len(result.skipped)}条\n")
+        # logger.info(f"error case:{len(result.errors)}条\n")
+        # logger.info(f"pass case:{result.testsRun - len(result.failures) - len(result.skipped) - len(result.errors)}条\n")
 
         logger.info(f"#################第 {round_num} 轮测试结束，测试结果：{test_result}#############\n")
 
