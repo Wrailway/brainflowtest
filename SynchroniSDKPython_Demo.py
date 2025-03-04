@@ -360,12 +360,23 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
     def change_channel(self, index):
         self.current_channel = index
-        # self.line.set_label(f'通道 {index + 1}')
-        # self.ax.legend(handles=[self.line], loc='upper right')
-        # self.update_plot()
-        # # 强制刷新绘图区域
+        self.data_buffer = None
+        self.update_buffer_size()
+        self.ax.clear()  # 清除坐标轴上的内容
+        self.ax.set_xlim(0, self.period)
+        self.ax.set_ylim(-1000, 1000)  # 恢复默认的 y 轴范围，可根据需要调整
+        self.ax.set_xlabel('Time (s)')
+        self.ax.set_ylabel('Amplitude (uV)')
+        self.ax.set_title('EEG Waveform (Real-time)')
+        self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
+        self.ax.legend(handles=[self.line], loc='upper right')
+        self.canvas.draw()
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 重新绘制图形
         # self.canvas.draw()
-        # 清空数据缓冲区
         self.data_buffer = None
         self.update_buffer_size()
         self.ax.clear()  # 清除坐标轴上的内容
