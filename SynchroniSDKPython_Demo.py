@@ -15,7 +15,7 @@ from sensor import *
 SCAN_DEVICE_PERIOD_IN_MS = 3000
 PACKAGE_COUNT = 5
 POWER_REFRESH_PERIOD_IN_MS = 60000
-PLOT_UPDATE_INTERVAL = 50
+PLOT_UPDATE_INTERVAL = 100
 SAMPLE_INTERVAL = 1  # 采样间隔
 
 # 定义周期选项
@@ -249,15 +249,21 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
             print(f"设备发现回调中出现异常: {e}")
 
     def onDataCallback(self, sensor: SensorProfile, data: SensorData):
-        self.callback_counter += 1
-        if self.callback_counter % 10 == 0:
-            if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
-                sampled_channel = []
-                for channel in data.channelSamples:
-                    sampled_channel.append([sample for index, sample in enumerate(channel) if index % SAMPLE_INTERVAL == 0])
-                data.channelSamples = sampled_channel
+        # self.callback_counter += 1
+        # if self.callback_counter % 10 == 0:
+        #     if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
+        #         sampled_channel = []
+        #         for channel in data.channelSamples:
+        #             if channel[0].channelIndex ==0:
+        #                 for sample in channel:
+        #                     print(f'{sample.sampleIndex}')
+        #             sampled_channel.append([sample for index, sample in enumerate(channel) if index % SAMPLE_INTERVAL == 0])
+        #         data.channelSamples = sampled_channel
+        if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
             self.data_received.emit(data)
-            self.callback_counter = 0
+            for sample in data.channelSamples[0]:
+                print(f'{sample.sampleIndex}')
+            # self.callback_counter = 0
 
     def onPowerChanged(self, sensor: SensorProfile, power: int):
         print('connected sensor: ' + sensor.BLEDevice.Name + ' power: ' + str(power))
@@ -284,8 +290,11 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
             if data and data.channelSamples:
                 for i, channel in enumerate(data.channelSamples):
                     if i >= self.EegChannelCount:
-                        print(f"Warning: Index {i} is out of bounds for self.data_buffer with size {self.EegChannelCount}. Skipping...")
+                        # print(f"Warning: Index {i} is out of bounds for self.data_buffer with size {self.EegChannelCount}. Skipping...")
                         continue
+                    # for sample in channel:
+                    #     if sample.channelIndex==0:
+                    #         print(f'{sample.sampleIndex}')
                     new_data = np.array([sample.data for sample in channel])
                     buffer_size = len(self.data_buffer[i])
                     num_samples = len(new_data)
