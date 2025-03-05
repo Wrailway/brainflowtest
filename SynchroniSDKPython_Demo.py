@@ -10,12 +10,13 @@ from PyQt5.QtCore import QRunnable, QThreadPool
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import numpy as np
+# 假设 sensor 模块已定义，这里省略其具体实现
 from sensor import *
 
 SCAN_DEVICE_PERIOD_IN_MS = 3000
 PACKAGE_COUNT = 5
 POWER_REFRESH_PERIOD_IN_MS = 60000
-PLOT_UPDATE_INTERVAL = 150 # 更新图像的时间间隔
+PLOT_UPDATE_INTERVAL = 150  # 更新图像的时间间隔
 
 # 定义周期选项
 PERIOD_OPTIONS = {
@@ -58,10 +59,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.buffer_index = 0
         self.line = None
         self.background = None
-        self.callback_counter = 0
         self.thread_pool = QThreadPool.globalInstance()  # 获取全局线程池
         self.current_channel = 0  # 默认显示通道 1 的数据
         self.EegChannelCount = 0  # 通道数目初始化为 0
+        self.impedance = []  # 阻抗值
         self.initUI()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_plot)
@@ -92,6 +93,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.ax.set_xlabel('Time (s)')
         self.ax.set_ylabel('Amplitude (uV)')
         self.ax.set_title('EEG Waveform (Real-time)')
+
+        # 添加阻抗值显示标签
+        self.impedance_label = QtWidgets.QLabel("阻抗值: 0 Ω")
+        left_layout.addWidget(self.impedance_label)
 
         right_layout = QtWidgets.QVBoxLayout()
         self.scan_button = QtWidgets.QPushButton('开始扫描蓝牙设备')
@@ -250,9 +255,6 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
     def onDataCallback(self, sensor: SensorProfile, data: SensorData):
         if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
             self.data_received.emit(data)
-            for sample in data.channelSamples[0]:
-                print(f'{sample.sampleIndex}')
-            # self.callback_counter = 0
 
     def onPowerChanged(self, sensor: SensorProfile, power: int):
         print('connected sensor: ' + sensor.BLEDevice.Name + ' power: ' + str(power))
@@ -278,12 +280,8 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         try:
             if data and data.channelSamples:
                 for i, channel in enumerate(data.channelSamples):
-                    if i >= self.EegChannelCount:
-                        # print(f"Warning: Index {i} is out of bounds for self.data_buffer with size {self.EegChannelCount}. Skipping...")
-                        continue
-                    # for sample in channel:
-                    #     if sample.channelIndex==0:
-                    #         print(f'{sample.sampleIndex}')
+                    if i >= len(self.impedance):
+                        self.impedance.append([])
                     new_data = np.array([sample.data for sample in channel])
                     buffer_size = len(self.data_buffer[i])
                     num_samples = len(new_data)
@@ -297,6 +295,8 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                         self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
                         self.data_buffer[i][-num_samples:] = new_data
                         self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
+
+                    self.impedance[i] = [sample.impedance for sample in channel]
 
                 self.update_plot_signal.emit()
         except Exception as e:
@@ -333,6 +333,19 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                 self.ax.draw_artist(self.line)
                 self.canvas.blit(self.ax.bbox)
                 self.canvas.flush_events()
+
+            # 更新阻抗值显示
+            if self.impedance:
+                current_impedance = np.mean(self.impedance[self.current_channel])/1000
+                if current_impedance <= 500:
+                    color = "green"
+                elif 500 < current_impedance <= 999:
+                    color = "yellow"
+                else:
+                    color = "red"
+                self.impedance_label.setText(f"阻抗值: {current_impedance:.2f} KΩ")
+                self.impedance_label.setStyleSheet(f"color: {color}")
+
         except Exception as e:
             print(f"update_plot 方法中出现异常: {e}")
 
@@ -370,7 +383,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.ax.legend(handles=[self.line], loc='upper right')
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
-        
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         # 重新绘制图形
@@ -384,6 +397,9 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.ax.set_ylabel('Amplitude (uV)')
         self.ax.set_title('EEG Waveform (Real-time)')
         self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
+        # impe = self.impedance[self.current_channel] if self.impedance else []
+        # avg_impedance = np.mean(impe) if impe else 0
+        # self.impedance_line, = self.ax.plot([], [], label=f'阻抗值 {avg_impedance:.2f} Ω', color=self.get_impedance_color(impe))
         self.ax.legend(handles=[self.line], loc='upper right')
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
