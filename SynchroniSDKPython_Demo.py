@@ -53,6 +53,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.connected_device = None
         self.SensorControllerInstance = SensorController()
         self.sensor_profiles = {}
+        self.current_sensor = None
         self.sampling_rate = 250
         self.period = 1  # 默认周期为 1s
         self.data_buffer = None
@@ -131,6 +132,28 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.channel_combobox.currentIndexChanged.connect(self.change_channel)
         right_layout.addWidget(QtWidgets.QLabel("选择通道:"))
         right_layout.addWidget(self.channel_combobox)
+        
+        #添加滤波开关
+        self.hpf_checkbox =  QtWidgets.QCheckBox('HPF')
+        self.lpf_checkbox =  QtWidgets.QCheckBox('LPF')
+        filter_layout1   = QtWidgets.QHBoxLayout()
+        filter_layout1.addWidget(self.hpf_checkbox )
+        filter_layout1.addWidget(self.lpf_checkbox )
+        
+        self.notch_filter_50_checkbox =  QtWidgets.QCheckBox('50hz陷波器')
+        self.notch_filter_60_checkbox =  QtWidgets.QCheckBox('60hz陷波器')
+        filter_layout2   = QtWidgets.QHBoxLayout()
+        filter_layout2.addWidget(self.notch_filter_50_checkbox)
+        filter_layout2.addWidget(self.notch_filter_60_checkbox)
+        
+        right_layout.addLayout(filter_layout1)
+        right_layout.addLayout(filter_layout2)
+        
+        # 连接信号与槽
+        self.hpf_checkbox.stateChanged.connect(self.toggle_hpf)
+        self.lpf_checkbox.stateChanged.connect(self.toggle_lpf)
+        self.notch_filter_50_checkbox.stateChanged.connect(self.toggle_notch_50)
+        self.notch_filter_60_checkbox.stateChanged.connect(self.toggle_notch_60)
 
         main_layout.addLayout(left_layout)
         main_layout.addLayout(right_layout)
@@ -141,6 +164,51 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.setWindowTitle('SynchroniSDKPython Demo')
         self.resize(1000, 600)
         self.show()
+        
+    def toggle_hpf(self, state):
+        if self.current_sensor is None:
+            print('当前未连接设备')
+            return
+        if state == QtCore.Qt.Checked:
+            print("高通滤波器（HPF）已开启")
+            self.current_sensor.setParam("FILTER_HPF", "ON")
+        else:
+            print("高通滤波器（HPF）已关闭")
+            self.current_sensor.setParam("FILTER_HPF", "OFF")
+
+    def toggle_lpf(self, state):
+        if self.current_sensor is None:
+            print('当前未连接设备')
+            return
+        if state == QtCore.Qt.Checked:
+            print("低通滤波器（LPF）已开启")
+            self.current_sensor.setParam("FILTER_LPF", "ON")
+        else:
+            print("低通滤波器（LPF）已关闭")
+            self.current_sensor.setParam("FILTER_LPF", "OFF")
+
+    def toggle_notch_50(self, state):
+        if self.current_sensor is None:
+            print('当前未连接设备')
+            return
+        if state == QtCore.Qt.Checked:
+            print("50Hz陷波器已开启")
+            self.current_sensor.setParam("FILTER_50Hz", "ON")
+        else:
+            print("50Hz陷波器已关闭")
+            self.current_sensor.setParam("FILTER_50Hz", "OFF")
+
+    def toggle_notch_60(self, state):
+        if self.current_sensor is None:
+            print('当前未连接设备')
+            return
+        if state == QtCore.Qt.Checked:
+            print("60Hz陷波器已开启")
+            self.current_sensor.setParam("FILTER_60Hz", "ON")
+        else:
+            print("60Hz陷波器已关闭")
+            self.current_sensor.setParam("FILTER_60Hz", "OFF")
+            
 
     def start_scan(self):
         try:
@@ -173,27 +241,27 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
         if target_device:
             try:
-                sensor = self.SensorControllerInstance.requireSensor(target_device)
-                if sensor is None:
+                self.current_sensor = self.SensorControllerInstance.requireSensor(target_device)
+                if self.current_sensor is None:
                     print("Failed to create SensorProfile")
                     return
 
-                sensor.onDataCallback = self.onDataCallback
-                sensor.onPowerChanged = self.onPowerChanged
-                sensor.onStateChanged = self.onStateChanged
-                sensor.onErrorCallback = self.onErrorCallback
+                self.current_sensor.onDataCallback = self.onDataCallback
+                self.current_sensor.onPowerChanged = self.onPowerChanged
+                self.current_sensor.onStateChanged = self.onStateChanged
+                self.current_sensor.onErrorCallback = self.onErrorCallback
 
-                if sensor.deviceState != DeviceStateEx.Ready:
-                    if not sensor.connect():
-                        print('connect device: ' + sensor.BLEDevice.Name + ' failed')
+                if self.current_sensor.deviceState != DeviceStateEx.Ready:
+                    if not self.current_sensor.connect():
+                        print('connect device: ' + self.current_sensor.BLEDevice.Name + ' failed')
                         return
 
-                if not sensor.hasInited:
-                    result = sensor.setParam('DEBUG_BLE_DATA_PATH', '/temp/test.csv')
-                    if not sensor.init(PACKAGE_COUNT, POWER_REFRESH_PERIOD_IN_MS):
-                        print('init device: ' + sensor.BLEDevice.Name + ' failed')
+                if not self.current_sensor.hasInited:
+                    # result = self.current_sensor.setParam('DEBUG_BLE_DATA_PATH', '/temp/test.csv')
+                    if not self.current_sensor.init(PACKAGE_COUNT, POWER_REFRESH_PERIOD_IN_MS):
+                        print('init device: ' + self.current_sensor.BLEDevice.Name + ' failed')
                         return
-                    deviceInfo = sensor.getDeviceInfo()
+                    deviceInfo = self.current_sensor.getDeviceInfo()
                     self.sampling_rate = deviceInfo.EegSampleRate
                     self.EegChannelCount = deviceInfo.EegChannelCount
                     self.update_buffer_size()
@@ -204,12 +272,12 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                         self.channel_combobox.addItem(f"通道 {i + 1}")
                     self.channel_combobox.setCurrentIndex(0)
 
-                if not sensor.startDataNotification():
-                    print('start data transfer with device: ' + sensor.BLEDevice.Name + ' failed')
+                if not self.current_sensor.startDataNotification():
+                    print('start data transfer with device: ' + self.current_sensor.BLEDevice.Name + ' failed')
                     return
 
                 self.connected_device = target_device
-                self.sensor_profiles[device_address] = sensor
+                self.sensor_profiles[device_address] = self.current_sensor
                 self.disconnect_button.setEnabled(True)
 
                 self.init_blitting()
@@ -276,32 +344,69 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.data_buffer = np.zeros((self.EegChannelCount, buffer_size))
         self.buffer_index = 0
 
+    # def add_data_to_buffer(self, data: SensorData):
+    #     try:
+    #         if data and data.channelSamples:
+    #             for i, channel in enumerate(data.channelSamples):
+    #                 if i >= len(self.impedance):
+    #                     self.impedance.append([])
+    #                 new_data = np.array([sample.data for sample in channel])
+    #                 buffer_size = len(self.data_buffer[i])
+    #                 num_samples = len(new_data)
+
+    #                 if buffer_size - num_samples >= 0:
+    #                     # 缓冲区有足够空间，将新数据添加到右侧
+    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                     self.data_buffer[i][-num_samples:] = new_data
+    #                 else:
+    #                     # 缓冲区空间不足，移除左侧数据
+    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                     self.data_buffer[i][-num_samples:] = new_data
+    #                     self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
+
+    #                 self.impedance[i] = [sample.impedance for sample in channel]
+
+    #             self.update_plot_signal.emit()
+    #     except Exception as e:
+    #         print(f"add_data_to_buffer 方法中出现异常: {e}")
+
     def add_data_to_buffer(self, data: SensorData):
         try:
             if data and data.channelSamples:
                 for i, channel in enumerate(data.channelSamples):
+                    # 确保阻抗列表长度足够
                     if i >= len(self.impedance):
                         self.impedance.append([])
+
+                    # 获取新数据
                     new_data = np.array([sample.data for sample in channel])
+                    impedance_values = [sample.impedance for sample in channel]
+
+                    # 缓冲区大小
                     buffer_size = len(self.data_buffer[i])
                     num_samples = len(new_data)
 
-                    if buffer_size - num_samples >= 0:
+                    # 处理缓冲区数据
+                    if num_samples < buffer_size:
                         # 缓冲区有足够空间，将新数据添加到右侧
                         self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
                         self.data_buffer[i][-num_samples:] = new_data
                     else:
-                        # 缓冲区空间不足，移除左侧数据
-                        self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-                        self.data_buffer[i][-num_samples:] = new_data
-                        self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
+                        # 缓冲区空间不足，只保留最新的 buffer_size 个数据
+                        self.data_buffer[i] = new_data[-buffer_size:]
 
-                    self.impedance[i] = [sample.impedance for sample in channel]
+                    # 更新阻抗值
+                    self.impedance[i] = impedance_values
 
+                # 发射信号更新图形
                 self.update_plot_signal.emit()
+        except IndexError as e:
+            print(f"add_data_to_buffer 方法中索引错误: {e}")
+        except ValueError as e:
+            print(f"add_data_to_buffer 方法中值错误: {e}")
         except Exception as e:
-            print(f"add_data_to_buffer 方法中出现异常: {e}")
-
+            print(f"add_data_to_buffer 方法中出现未知异常: {e}")
+        
     def init_blitting(self):
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
