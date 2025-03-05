@@ -15,8 +15,7 @@ from sensor import *
 SCAN_DEVICE_PERIOD_IN_MS = 3000
 PACKAGE_COUNT = 5
 POWER_REFRESH_PERIOD_IN_MS = 60000
-PLOT_UPDATE_INTERVAL = 100
-SAMPLE_INTERVAL = 1  # 采样间隔
+PLOT_UPDATE_INTERVAL = 150 # 更新图像的时间间隔
 
 # 定义周期选项
 PERIOD_OPTIONS = {
@@ -249,16 +248,6 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
             print(f"设备发现回调中出现异常: {e}")
 
     def onDataCallback(self, sensor: SensorProfile, data: SensorData):
-        # self.callback_counter += 1
-        # if self.callback_counter % 10 == 0:
-        #     if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
-        #         sampled_channel = []
-        #         for channel in data.channelSamples:
-        #             if channel[0].channelIndex ==0:
-        #                 for sample in channel:
-        #                     print(f'{sample.sampleIndex}')
-        #             sampled_channel.append([sample for index, sample in enumerate(channel) if index % SAMPLE_INTERVAL == 0])
-        #         data.channelSamples = sampled_channel
         if data and data.channelSamples and data.dataType in [DataType.NTF_EEG]:
             self.data_received.emit(data)
             for sample in data.channelSamples[0]:
