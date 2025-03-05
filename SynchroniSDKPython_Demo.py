@@ -16,7 +16,7 @@ from sensor import *
 SCAN_DEVICE_PERIOD_IN_MS = 3000
 PACKAGE_COUNT = 5
 POWER_REFRESH_PERIOD_IN_MS = 60000
-PLOT_UPDATE_INTERVAL = 500  # 更新图像的时间间隔
+PLOT_UPDATE_INTERVAL = 100  # 更新图像的时间间隔
 
 # 定义周期选项
 PERIOD_OPTIONS = {
@@ -344,68 +344,68 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.data_buffer = np.zeros((self.EegChannelCount, buffer_size))
         self.buffer_index = 0
 
-    # def add_data_to_buffer(self, data: SensorData):
-    #     try:
-    #         if data and data.channelSamples:
-    #             for i, channel in enumerate(data.channelSamples):
-    #                 if i >= len(self.impedance):
-    #                     self.impedance.append([])
-    #                 new_data = np.array([sample.data for sample in channel])
-    #                 buffer_size = len(self.data_buffer[i])
-    #                 num_samples = len(new_data)
-
-    #                 if buffer_size - num_samples >= 0:
-    #                     # 缓冲区有足够空间，将新数据添加到右侧
-    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-    #                     self.data_buffer[i][-num_samples:] = new_data
-    #                 else:
-    #                     # 缓冲区空间不足，移除左侧数据
-    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-    #                     self.data_buffer[i][-num_samples:] = new_data
-    #                     self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
-
-    #                 self.impedance[i] = [sample.impedance for sample in channel]
-
-    #             self.update_plot_signal.emit()
-    #     except Exception as e:
-    #         print(f"add_data_to_buffer 方法中出现异常: {e}")
-
     def add_data_to_buffer(self, data: SensorData):
         try:
             if data and data.channelSamples:
                 for i, channel in enumerate(data.channelSamples):
-                    # 确保阻抗列表长度足够
                     if i >= len(self.impedance):
                         self.impedance.append([])
-
-                    # 获取新数据
                     new_data = np.array([sample.data for sample in channel])
-                    impedance_values = [sample.impedance for sample in channel]
-
-                    # 缓冲区大小
                     buffer_size = len(self.data_buffer[i])
                     num_samples = len(new_data)
 
-                    # 处理缓冲区数据
-                    if num_samples < buffer_size:
+                    if buffer_size - num_samples >= 0:
                         # 缓冲区有足够空间，将新数据添加到右侧
                         self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
                         self.data_buffer[i][-num_samples:] = new_data
                     else:
-                        # 缓冲区空间不足，只保留最新的 buffer_size 个数据
-                        self.data_buffer[i] = new_data[-buffer_size:]
+                        # 缓冲区空间不足，移除左侧数据
+                        self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+                        self.data_buffer[i][-num_samples:] = new_data
+                        self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
 
-                    # 更新阻抗值
-                    self.impedance[i] = impedance_values
+                    self.impedance[i] = [sample.impedance for sample in channel]
 
-                # 发射信号更新图形
                 self.update_plot_signal.emit()
-        except IndexError as e:
-            print(f"add_data_to_buffer 方法中索引错误: {e}")
-        except ValueError as e:
-            print(f"add_data_to_buffer 方法中值错误: {e}")
         except Exception as e:
-            print(f"add_data_to_buffer 方法中出现未知异常: {e}")
+            print(f"add_data_to_buffer 方法中出现异常: {e}")
+
+    # def add_data_to_buffer(self, data: SensorData):
+    #     try:
+    #         if data and data.channelSamples:
+    #             for i, channel in enumerate(data.channelSamples):
+    #                 # 确保阻抗列表长度足够
+    #                 if i >= len(self.impedance):
+    #                     self.impedance.append([])
+
+    #                 # 获取新数据
+    #                 new_data = np.array([sample.data for sample in channel])
+    #                 impedance_values = [sample.impedance for sample in channel]
+
+    #                 # 缓冲区大小
+    #                 buffer_size = len(self.data_buffer[i])
+    #                 num_samples = len(new_data)
+
+    #                 # 处理缓冲区数据
+    #                 if num_samples < buffer_size:
+    #                     # 缓冲区有足够空间，将新数据添加到右侧
+    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                     self.data_buffer[i][-num_samples:] = new_data
+    #                 else:
+    #                     # 缓冲区空间不足，只保留最新的 buffer_size 个数据
+    #                     self.data_buffer[i] = new_data[-buffer_size:]
+
+    #                 # 更新阻抗值
+    #                 self.impedance[i] = impedance_values
+
+    #             # 发射信号更新图形
+    #             self.update_plot_signal.emit()
+    #     except IndexError as e:
+    #         print(f"add_data_to_buffer 方法中索引错误: {e}")
+    #     except ValueError as e:
+    #         print(f"add_data_to_buffer 方法中值错误: {e}")
+    #     except Exception as e:
+    #         print(f"add_data_to_buffer 方法中出现未知异常: {e}")
         
     def init_blitting(self):
         self.canvas.draw()
