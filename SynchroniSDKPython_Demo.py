@@ -83,9 +83,9 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         left_layout = QtWidgets.QVBoxLayout()
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
-        left_layout.addWidget(self.canvas)
+        left_layout.addWidget(self.canvas,stretch=18)
         toolbar = NavigationToolbar2QT(self.canvas, self)
-        left_layout.addWidget(toolbar)
+        left_layout.addWidget(toolbar,stretch=1)
 
         self.ax = self.figure.add_subplot(111)
         self.ax.set_xlim(0, self.period)
@@ -96,7 +96,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
         # 添加阻抗值显示标签
         self.impedance_label = QtWidgets.QLabel("阻抗值: 0 Ω")
-        left_layout.addWidget(self.impedance_label)
+        left_layout.addWidget(self.impedance_label,stretch=1)
 
         right_layout = QtWidgets.QVBoxLayout()
         self.scan_button = QtWidgets.QPushButton('开始扫描蓝牙设备')
