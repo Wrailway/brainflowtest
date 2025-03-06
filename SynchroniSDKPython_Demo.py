@@ -10,11 +10,13 @@ from PyQt5.QtCore import QRunnable, QThreadPool
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import numpy as np
+from scipy.signal import medfilt, gaussian, convolve
+from scipy.interpolate import interp1d
 # 假设 sensor 模块已定义，这里省略其具体实现
 from sensor import *
 
 SCAN_DEVICE_PERIOD_IN_MS = 3000
-PACKAGE_COUNT = 5
+PACKAGE_COUNT = 10
 POWER_REFRESH_PERIOD_IN_MS = 60000
 PLOT_UPDATE_INTERVAL = 100  # 更新图像的时间间隔
 
@@ -46,6 +48,8 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
     data_received = QtCore.pyqtSignal(object)
     add_device_signal = QtCore.pyqtSignal(str)
     update_plot_signal = QtCore.pyqtSignal()
+    # 定义信号，用于传递绘图数据
+    # update_plot_signal = QtCore.pyqtSignal(np.ndarray, np.ndarray, float, float)
 
     def __init__(self):
         super().__init__()
@@ -58,6 +62,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.period = 1  # 默认周期为 1s
         self.data_buffer = None
         self.buffer_index = 0
+        self.prev_buffer_index = 0  # 新增：用于记录上一次的缓冲区索引，以便检测丢包
         self.line = None
         self.background = None
         self.thread_pool = QThreadPool.globalInstance()  # 获取全局线程池
@@ -366,46 +371,40 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
                     self.impedance[i] = [sample.impedance for sample in channel]
 
+                    # # 新增：平滑处理 - 移动平均
+                    # window_size_smooth = 3  # 移动平均窗口大小，可以根据实际情况调整
+                    # smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
+                    # new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
+
+                    # 新增：去噪 - 高斯滤波
+                    gaussian_kernel = gaussian(5, std=1)  # 高斯核大小和标准差可调整
+                    new_data_denoised = convolve(new_data, gaussian_kernel, mode='same')
+
+                    # 新增：丢包检测和补点逻辑优化
+                    expected_samples = self.buffer_index - self.prev_buffer_index  # 预期的样本数量
+                    if num_samples < expected_samples:
+                        missing_samples = expected_samples - num_samples
+                        x = np.arange(self.prev_buffer_index, self.prev_buffer_index + num_samples)
+                        y = self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + num_samples]
+                        # 检查数据单调性
+                        # if np.all(np.diff(y) >= 0) or np.all(np.diff(y) <= 0):
+                        #     kind = 'linear'
+                        # else:
+                        #     kind = 'cubic'
+                        kind = 'linear'
+                        interp_func = interp1d(x, y, kind=kind)
+                        x_new = np.arange(self.prev_buffer_index, self.prev_buffer_index + expected_samples)
+                        new_y = interp_func(x_new)
+                        self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + expected_samples] = new_y
+
+                    self.data_buffer[i, -num_samples:] = new_data_denoised
+
+                    self.prev_buffer_index = self.buffer_index  # 更新上一次的缓冲区索引
+                    self.buffer_index += num_samples
+
                 self.update_plot_signal.emit()
         except Exception as e:
             print(f"add_data_to_buffer 方法中出现异常: {e}")
-
-    # def add_data_to_buffer(self, data: SensorData):
-    #     try:
-    #         if data and data.channelSamples:
-    #             for i, channel in enumerate(data.channelSamples):
-    #                 # 确保阻抗列表长度足够
-    #                 if i >= len(self.impedance):
-    #                     self.impedance.append([])
-
-    #                 # 获取新数据
-    #                 new_data = np.array([sample.data for sample in channel])
-    #                 impedance_values = [sample.impedance for sample in channel]
-
-    #                 # 缓冲区大小
-    #                 buffer_size = len(self.data_buffer[i])
-    #                 num_samples = len(new_data)
-
-    #                 # 处理缓冲区数据
-    #                 if num_samples < buffer_size:
-    #                     # 缓冲区有足够空间，将新数据添加到右侧
-    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-    #                     self.data_buffer[i][-num_samples:] = new_data
-    #                 else:
-    #                     # 缓冲区空间不足，只保留最新的 buffer_size 个数据
-    #                     self.data_buffer[i] = new_data[-buffer_size:]
-
-    #                 # 更新阻抗值
-    #                 self.impedance[i] = impedance_values
-
-    #             # 发射信号更新图形
-    #             self.update_plot_signal.emit()
-    #     except IndexError as e:
-    #         print(f"add_data_to_buffer 方法中索引错误: {e}")
-    #     except ValueError as e:
-    #         print(f"add_data_to_buffer 方法中值错误: {e}")
-    #     except Exception as e:
-    #         print(f"add_data_to_buffer 方法中出现未知异常: {e}")
         
     def init_blitting(self):
         self.canvas.draw()
@@ -413,12 +412,33 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.line, = self.ax.plot([], [], label='通道 1')
         self.ax.legend(handles=[self.line], loc='upper right')
 
+
+    def start_data_processing(self, data):
+        task = DataProcessingTask(self, data)
+        self.thread_pool.start(task)
+        
+    def init_plot(self):
+        """初始化绘图相关设置"""
+        self.ax.set_xlim(0, self.period)
+        self.ax.set_xlabel('Time (s)')
+        self.ax.set_ylabel('Amplitude (uV)')
+        self.ax.set_title('EEG Waveform (Real-time)')
+        self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
+        self.ax.legend(handles=[self.line], loc='upper right')
+        self.canvas.draw()
+        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+
     def update_plot(self):
         try:
-            if self.data_buffer is not None:
+            if self.data_buffer is not None and self.current_channel < self.EegChannelCount:
                 buffer_size = int(self.period * self.sampling_rate)
                 time_axis = np.linspace(0, self.period, buffer_size)
                 y_data = self.data_buffer[self.current_channel]
+                self.line.set_data(time_axis, y_data)
+
+                if not np.issubdtype(y_data.dtype, np.number):
+                    print(f"警告：通道 {self.current_channel + 1} 的数据类型不是数值类型，可能影响绘图。")
+                    return
 
                 min_val = np.min(y_data)
                 max_val = np.max(y_data)
@@ -427,90 +447,58 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     min_val = min_val - 100
                     max_val = max_val + 100
 
-                margin = 0.1 * (max_val - min_val)  # 适当增大边距，使量程变化更明显
+                margin = 0.1 * (max_val - min_val)
                 min_val -= margin
                 max_val += margin
-
+                # print(f'min_val = {min_val},max_val={max_val}')
                 self.ax.set_ylim(min_val, max_val)
                 self.ax.set_xlim(0, self.period)
 
-                self.line.set_data(time_axis, y_data)
-                self.ax.draw_artist(self.line)  # 绘制线条
+                self.canvas.restore_region(self.background)
+                self.ax.draw_artist(self.line)
+                self.canvas.blit(self.ax.bbox)
+                # self.canvas.draw() # 整个画面绘制，界面有卡顿，上述三行代码不卡顿但是量程有问题，需要解决
+                # 更新坐标轴相关元素
 
-                self.canvas.draw()  # 重新绘制整个画布，确保量程变化生效
-                self.canvas.flush_events()
-
-            if self.impedance:
+            if self.impedance and self.current_channel < len(self.impedance):
                 current_impedance = np.mean(self.impedance[self.current_channel]) / 1000
+                impedance_text = f"阻抗值: {current_impedance:.2f} KΩ"
                 if current_impedance <= 500:
                     color = "green"
                 elif 500 < current_impedance <= 999:
                     color = "yellow"
                 else:
                     color = "red"
-                self.impedance_label.setText(f"阻抗值: {current_impedance:.2f} KΩ")
+                self.impedance_label.setText(impedance_text)
                 self.impedance_label.setStyleSheet(f"color: {color}")
 
         except Exception as e:
             print(f"update_plot 方法中出现异常: {e}")
 
-    def start_data_processing(self, data):
-        task = DataProcessingTask(self, data)
-        self.thread_pool.start(task)
 
     def change_period(self, period_text):
         self.period = PERIOD_OPTIONS[period_text]
-        self.data_buffer = None
-        self.update_buffer_size()
-        self.ax.clear()
-
-        self.ax.set_xlim(0, self.period)
-        self.ax.set_ylim(-1000, 1000)  # 这里可以先设置一个默认范围，后续根据数据更新
-        self.ax.set_xlabel('Time (s)')
-        self.ax.set_ylabel('Amplitude (uV)')
-        self.ax.set_title('EEG Waveform (Real-time)')
-
-        self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
-        self.ax.legend(handles=[self.line], loc='upper right')
-
-        self.canvas.draw()
-        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        self.reset_plot()
 
     def change_channel(self, index):
         self.current_channel = index
-        self.data_buffer = None
-        self.update_buffer_size()
-        self.ax.clear()
-
-        self.ax.set_xlim(0, self.period)
-        self.ax.set_ylim(-1000, 1000)  # 先设置默认范围
-        self.ax.set_xlabel('Time (s)')
-        self.ax.set_ylabel('Amplitude (uV)')
-        self.ax.set_title('EEG Waveform (Real-time)')
-
-        self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
-        self.ax.legend(handles=[self.line], loc='upper right')
-
-        self.canvas.draw()
-        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        self.reset_plot()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.reset_plot()
+
+    def reset_plot(self):
+        """重置绘图相关设置"""
         self.data_buffer = None
         self.update_buffer_size()
-        self.ax.clear()
+        self.ax.clear()  # 清除当前绘图内容
 
-        self.ax.set_xlim(0, self.period)
-        self.ax.set_ylim(-1000, 1000)  # 设置默认范围
-        self.ax.set_xlabel('Time (s)')
-        self.ax.set_ylabel('Amplitude (uV)')
-        self.ax.set_title('EEG Waveform (Real-time)')
+        # 重新初始化绘图设置
+        self.init_plot()
 
-        self.line, = self.ax.plot([], [], label=f'通道 {self.current_channel + 1}')
-        self.ax.legend(handles=[self.line], loc='upper right')
-
-        self.canvas.draw()
-        self.background = self.canvas.copy_from_bbox(self.ax.bbox)
+        # # 更新绘图以显示新的数据和设置
+        # self.update_plot()
 
 
 if __name__ == '__main__':
