@@ -371,13 +371,13 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
                     self.impedance[i] = [sample.impedance for sample in channel]
 
-                    # # 新增：平滑处理 - 移动平均
-                    # window_size_smooth = 3  # 移动平均窗口大小，可以根据实际情况调整
-                    # smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
-                    # new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
+                    # 新增：平滑处理 - 移动平均
+                    window_size_smooth = 3  # 移动平均窗口大小，可以根据实际情况调整
+                    smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
+                    new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
 
                     # 新增：去噪 - 高斯滤波
-                    gaussian_kernel = gaussian(5, std=1)  # 高斯核大小和标准差可调整
+                    gaussian_kernel = gaussian(10, std=2)  # 高斯核大小和标准差可调整
                     new_data_denoised = convolve(new_data, gaussian_kernel, mode='same')
 
                     # 新增：丢包检测和补点逻辑优化
@@ -454,10 +454,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                 self.ax.set_ylim(min_val, max_val)
                 self.ax.set_xlim(0, self.period)
 
-                self.canvas.restore_region(self.background)
-                self.ax.draw_artist(self.line)
-                self.canvas.blit(self.ax.bbox)
-                # self.canvas.draw() # 整个画面绘制，界面有卡顿，上述三行代码不卡顿但是量程有问题，需要解决
+                # self.canvas.restore_region(self.background)
+                # self.ax.draw_artist(self.line)
+                # self.canvas.blit(self.ax.bbox)
+                self.canvas.draw() # 整个画面绘制，界面有卡顿，上述三行代码不卡顿但是量程有问题，需要解决
                 # 更新坐标轴相关元素
 
             if self.impedance and self.current_channel < len(self.impedance):
