@@ -65,7 +65,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.prev_buffer_index = 0  # 新增：用于记录上一次的缓冲区索引，以便检测丢包
         self.line = None
         self.background = None
-        self.thread_pool = QThreadPool.globalInstance()  # 获取全局线程池
+        # self.thread_pool = QThreadPool.globalInstance()  # 获取全局线程池
+        # 在类初始化时配置线程池
+        self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(4)  # 根据硬件配置调整
         self.current_channel = 0  # 默认显示通道 1 的数据
         self.EegChannelCount = 0  # 通道数目初始化为 0
         self.impedance = []  # 阻抗值
@@ -299,10 +302,17 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
             sensor = self.sensor_profiles.get(device_address)
             if sensor:
                 try:
+                    sensor.stopDataNotification()
                     sensor.disconnect()
+                    sensor.onDataCallback = None  # 清除回调引用
                     print(f"Disconnected from device {self.connected_device.Name}")
                     self.connected_device = None
                     self.disconnect_button.setEnabled(False)
+                    # 停止数据更新相关操作，但不清除绘图
+                    self.data_buffer = None
+                    self.buffer_index = 0
+                    self.prev_buffer_index = 0
+                    self.timer.stop()  # 停止定时器                   
                 except Exception as e:
                     print(f"断开设备连接时出现异常: {e}")
             else:
@@ -429,6 +439,52 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
 
+    # def update_plot(self):
+    #     try:
+    #         if self.data_buffer is not None and self.current_channel < self.EegChannelCount:
+    #             buffer_size = int(self.period * self.sampling_rate)
+    #             time_axis = np.linspace(0, self.period, buffer_size)
+    #             y_data = self.data_buffer[self.current_channel]
+    #             self.line.set_data(time_axis, y_data)
+
+    #             if not np.issubdtype(y_data.dtype, np.number):
+    #                 print(f"警告：通道 {self.current_channel + 1} 的数据类型不是数值类型，可能影响绘图。")
+    #                 return
+
+    #             min_val = np.min(y_data)
+    #             max_val = np.max(y_data)
+
+    #             if min_val == max_val:
+    #                 min_val = min_val - 100
+    #                 max_val = max_val + 100
+
+    #             margin = 0.1 * (max_val - min_val)
+    #             min_val -= margin
+    #             max_val += margin
+    #             # print(f'min_val = {min_val},max_val={max_val}')
+    #             self.ax.set_ylim(min_val, max_val)
+    #             self.ax.set_xlim(0, self.period)
+
+    #             # self.canvas.restore_region(self.background)
+    #             # self.ax.draw_artist(self.line)
+    #             # self.canvas.blit(self.ax.bbox)
+    #             self.canvas.draw() # 整个画面绘制，界面有卡顿，上述三行代码不卡顿但是量程有问题，需要解决
+    #             # 更新坐标轴相关元素
+
+    #         if self.impedance and self.current_channel < len(self.impedance):
+    #             current_impedance = np.mean(self.impedance[self.current_channel]) / 1000
+    #             impedance_text = f"阻抗值: {current_impedance:.2f} KΩ"
+    #             if current_impedance <= 500:
+    #                 color = "green"
+    #             elif 500 < current_impedance <= 999:
+    #                 color = "yellow"
+    #             else:
+    #                 color = "red"
+    #             self.impedance_label.setText(impedance_text)
+    #             self.impedance_label.setStyleSheet(f"color: {color}")
+
+    #     except Exception as e:
+    #         print(f"update_plot 方法中出现异常: {e}")
     def update_plot(self):
         try:
             if self.data_buffer is not None and self.current_channel < self.EegChannelCount:
@@ -451,15 +507,23 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                 margin = 0.1 * (max_val - min_val)
                 min_val -= margin
                 max_val += margin
-                # print(f'min_val = {min_val},max_val={max_val}')
-                self.ax.set_ylim(min_val, max_val)
-                self.ax.set_xlim(0, self.period)
 
-                # self.canvas.restore_region(self.background)
-                # self.ax.draw_artist(self.line)
-                # self.canvas.blit(self.ax.bbox)
-                self.canvas.draw() # 整个画面绘制，界面有卡顿，上述三行代码不卡顿但是量程有问题，需要解决
-                # 更新坐标轴相关元素
+                # 更新坐标轴范围
+                self.ax.set_xlim(0, self.period)
+                self.ax.set_ylim(min_val, max_val)
+
+                # 正确实现 Blitting
+                if self.background is not None:
+                    self.canvas.restore_region(self.background)
+                    self.ax.draw_artist(self.line)
+                    self.canvas.blit(self.ax.bbox)
+                else:
+                    self.canvas.draw()  # 初始绘制时没有背景
+
+                # 更新坐标轴标签和标题
+                self.ax.set_title(f'EEG Waveform (通道 {self.current_channel + 1})')
+                self.ax.set_xlabel('Time (s)')
+                self.ax.set_ylabel('Amplitude (uV)')
 
             if self.impedance and self.current_channel < len(self.impedance):
                 current_impedance = np.mean(self.impedance[self.current_channel]) / 1000
@@ -475,6 +539,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
         except Exception as e:
             print(f"update_plot 方法中出现异常: {e}")
+            self.canvas.draw()  # 异常时强制全量绘制
 
 
     def change_period(self, period_text):
