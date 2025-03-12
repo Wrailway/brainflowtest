@@ -1,3 +1,4 @@
+import traceback
 import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'SimHei'  # 使用黑体字体
 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
@@ -10,8 +11,9 @@ from PyQt5.QtCore import QRunnable, QThreadPool
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 import numpy as np
-from scipy.signal import medfilt, gaussian, convolve
-from scipy.interpolate import interp1d
+from scipy.signal.windows import gaussian
+from scipy.signal import butter, filtfilt, medfilt, convolve
+from scipy.interpolate import CubicSpline, interp1d
 # 假设 sensor 模块已定义，这里省略其具体实现
 from sensor import *
 
@@ -53,6 +55,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
+          # 初始化开关状态
+        self.smoothing_enabled = False
+        self.denoising_enabled = False
+        self.point_filling_enabled = False
         self.discovered_devices = []
         self.connected_device = None
         self.SensorControllerInstance = SensorController()
@@ -362,6 +368,130 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
         self.data_buffer = np.zeros((self.EegChannelCount, buffer_size))
         self.buffer_index = 0
 
+    # def add_data_to_buffer(self, data: SensorData):
+    #     try:
+    #         if data and data.channelSamples:
+    #             for i, channel in enumerate(data.channelSamples):
+    #                 if i >= len(self.impedance):
+    #                     self.impedance.append([])
+    #                 new_data = np.array([sample.data for sample in channel])
+    #                 buffer_size = len(self.data_buffer[i])
+    #                 num_samples = len(new_data)
+
+    #                 if buffer_size - num_samples >= 0:
+    #                     # 缓冲区有足够空间，将新数据添加到右侧
+    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                     self.data_buffer[i][-num_samples:] = new_data
+    #                 else:
+    #                     # 缓冲区空间不足，移除左侧数据
+    #                     self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                     self.data_buffer[i][-num_samples:] = new_data
+    #                     self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
+
+    #                 self.impedance[i] = [sample.impedance for sample in channel]
+
+    #                 # 新增：平滑处理 - 移动平均
+    #                 window_size_smooth = 2  # 移动平均窗口大小，可以根据实际情况调整
+    #                 smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
+    #                 new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
+
+    #                 # 新增：去噪 - 高斯滤波
+    #                 gaussian_kernel = gaussian(10, std=2)  # 高斯核大小和标准差可调整
+    #                 new_data_denoised = convolve(new_data_smoothed, gaussian_kernel, mode='same')
+
+    #                 # 新增：丢包检测和补点逻辑优化
+    #                 expected_samples = self.buffer_index - self.prev_buffer_index  # 预期的样本数量
+    #                 if num_samples < expected_samples:
+    #                     missing_samples = expected_samples - num_samples
+    #                     print(f'missing_samples={missing_samples}')
+    #                     x = np.arange(self.prev_buffer_index, self.prev_buffer_index + num_samples)
+    #                     y = self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + num_samples]
+    #                     # 检查数据单调性
+    #                     # if np.all(np.diff(y) >= 0) or np.all(np.diff(y) <= 0):
+    #                     #     kind = 'linear'
+    #                     # else:
+    #                     #     kind = 'cubic'
+    #                     kind = 'linear'
+    #                     interp_func = interp1d(x, y, kind=kind)
+    #                     x_new = np.arange(self.prev_buffer_index, self.prev_buffer_index + expected_samples)
+    #                     new_y = interp_func(x_new)
+    #                     self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + expected_samples] = new_y
+
+    #                 self.data_buffer[i, -num_samples:] = new_data_denoised
+
+    #                 self.prev_buffer_index = self.buffer_index  # 更新上一次的缓冲区索引
+    #                 self.buffer_index += num_samples
+
+    #             self.update_plot_signal.emit()
+    #     except Exception as e:
+    #         print(f"add_data_to_buffer 方法中出现异常: {e}")
+            
+    # def add_data_to_buffer(self, data: SensorData):
+    #     try:
+    #         if data and data.channelSamples:
+    #             for i, channel in enumerate(data.channelSamples):
+    #                 # 确保阻抗列表长度足够
+    #                 if i >= len(self.impedance):
+    #                     self.impedance.append([])
+    #                 # 提取新数据
+    #                 new_data = np.array([sample.data for sample in channel])
+    #                 buffer_size = len(self.data_buffer[i])
+    #                 num_samples = len(new_data)
+
+    #                 # 处理数据添加到缓冲区
+    #                 self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+    #                 self.data_buffer[i][-num_samples:] = new_data
+
+    #                 # 更新阻抗数据
+    #                 self.impedance[i] = [sample.impedance for sample in channel]
+
+    #                 # 平滑处理 - 移动平均
+    #                 if self.smoothing_enabled:
+    #                     window_size_smooth = 2  # 移动平均窗口大小，可以根据实际情况调整
+    #                     smooth_kernel = np.ones(window_size_smooth) / window_size_smooth
+    #                     new_data = convolve(new_data, smooth_kernel, mode='same')
+
+    #                 # 去噪 - 巴特沃斯滤波器
+    #                 if self.denoising_enabled:
+    #                     # 设计巴特沃斯滤波器
+    #                     fs = 250  # 采样频率，根据实际情况修改
+    #                     lowcut = 0.5  # 低频截止频率
+    #                     highcut = 50  # 高频截止频率
+    #                     nyquist = 0.5 * fs
+    #                     low = lowcut / nyquist
+    #                     high = highcut / nyquist
+    #                     order = 4  # 滤波器阶数
+    #                     b, a = butter(order, [low, high], btype='band')
+    #                     new_data = filtfilt(b, a, new_data)
+
+    #                 # 丢包检测和补点逻辑优化
+    #                 if self.point_filling_enabled:
+    #                     expected_samples = self.buffer_index - self.prev_buffer_index  # 预期的样本数量
+    #                     if num_samples < expected_samples:
+    #                         missing_samples = expected_samples - num_samples
+    #                         print(f'missing_samples={missing_samples}')
+    #                         x = np.arange(self.prev_buffer_index, self.prev_buffer_index + num_samples)
+    #                         y = self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + num_samples]
+    #                         # 使用三次样条插值
+    #                         cs = CubicSpline(x, y)
+    #                         x_new = np.arange(self.prev_buffer_index, self.prev_buffer_index + expected_samples)
+    #                         new_y = cs(x_new)
+    #                         self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + expected_samples] = new_y
+
+    #                 # 更新缓冲区数据
+    #                 self.data_buffer[i, -num_samples:] = new_data
+
+    #                 # 更新上一次的缓冲区索引
+    #                 self.prev_buffer_index = self.buffer_index
+    #                 self.buffer_index += num_samples
+
+    #             # 发送信号更新绘图
+    #             self.update_plot_signal.emit()
+    #     except Exception as e:
+    #         import traceback
+    #         print(f"add_data_to_buffer 方法中出现异常: {e}")
+    #         print(traceback.format_exc())  # 打印详细的异常堆栈信息
+    
     def add_data_to_buffer(self, data: SensorData):
         try:
             if data and data.channelSamples:
@@ -372,46 +502,12 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     buffer_size = len(self.data_buffer[i])
                     num_samples = len(new_data)
 
-                    if buffer_size - num_samples >= 0:
-                        # 缓冲区有足够空间，将新数据添加到右侧
-                        self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-                        self.data_buffer[i][-num_samples:] = new_data
-                    else:
-                        # 缓冲区空间不足，移除左侧数据
-                        self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
-                        self.data_buffer[i][-num_samples:] = new_data
-                        self.data_buffer[i] = self.data_buffer[i][-buffer_size:]
+                    # 处理数据添加到缓冲区
+                    self.data_buffer[i] = np.roll(self.data_buffer[i], -num_samples)
+                    self.data_buffer[i][-num_samples:] = new_data
 
+                    # 更新阻抗数据
                     self.impedance[i] = [sample.impedance for sample in channel]
-
-                    # 新增：平滑处理 - 移动平均
-                    window_size_smooth = 2  # 移动平均窗口大小，可以根据实际情况调整
-                    smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
-                    new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
-
-                    # 新增：去噪 - 高斯滤波
-                    gaussian_kernel = gaussian(10, std=2)  # 高斯核大小和标准差可调整
-                    new_data_denoised = convolve(new_data_smoothed, gaussian_kernel, mode='same')
-
-                    # 新增：丢包检测和补点逻辑优化
-                    expected_samples = self.buffer_index - self.prev_buffer_index  # 预期的样本数量
-                    if num_samples < expected_samples:
-                        missing_samples = expected_samples - num_samples
-                        print(f'missing_samples={missing_samples}')
-                        x = np.arange(self.prev_buffer_index, self.prev_buffer_index + num_samples)
-                        y = self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + num_samples]
-                        # 检查数据单调性
-                        # if np.all(np.diff(y) >= 0) or np.all(np.diff(y) <= 0):
-                        #     kind = 'linear'
-                        # else:
-                        #     kind = 'cubic'
-                        kind = 'linear'
-                        interp_func = interp1d(x, y, kind=kind)
-                        x_new = np.arange(self.prev_buffer_index, self.prev_buffer_index + expected_samples)
-                        new_y = interp_func(x_new)
-                        self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + expected_samples] = new_y
-
-                    self.data_buffer[i, -num_samples:] = new_data_denoised
 
                     self.prev_buffer_index = self.buffer_index  # 更新上一次的缓冲区索引
                     self.buffer_index += num_samples
@@ -419,7 +515,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                 self.update_plot_signal.emit()
         except Exception as e:
             print(f"add_data_to_buffer 方法中出现异常: {e}")
-        
+            
     def init_blitting(self):
         self.canvas.draw()
         self.background = self.canvas.copy_from_bbox(self.ax.bbox)
@@ -514,19 +610,23 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                 # 更新坐标轴范围
                 self.ax.set_xlim(0, self.period)
                 self.ax.set_ylim(min_val, max_val)
-
+                # print(f'min_val = {min_val},max_val = {max_val}')
                 # 正确实现 Blitting
                 if self.background is not None:
                     self.canvas.restore_region(self.background)
                     self.ax.draw_artist(self.line)
+                    # 再次手动更新坐标轴范围
+                    # self.ax.set_xlim(0, self.period)
+                    # self.ax.set_ylim(min_val, max_val)
                     self.canvas.blit(self.ax.bbox)
                 else:
                     self.canvas.draw()  # 初始绘制时没有背景
+                    self.background = self.canvas.copy_from_bbox(self.ax.bbox)  # 更新背景
 
-                # 更新坐标轴标签和标题
+               # 更新坐标轴标签和标题
                 # self.ax.set_title(f'EEG Waveform (通道 {self.current_channel + 1})')
-                # self.ax.set_xlabel('Time (s)')
-                # self.ax.set_ylabel('Amplitude (uV)')
+                # self.ax.set_xlim(0, self.period)
+                # self.ax.set_ylim(min_val, max_val)
                 self.canvas.draw()  # 初始绘制时没有背景
 
             if self.impedance and self.current_channel < len(self.impedance):
@@ -543,6 +643,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
 
         except Exception as e:
             print(f"update_plot 方法中出现异常: {e}")
+            print(traceback.format_exc())  # 打印详细的异常堆栈信息
             self.canvas.draw()  # 异常时强制全量绘制
 
 
