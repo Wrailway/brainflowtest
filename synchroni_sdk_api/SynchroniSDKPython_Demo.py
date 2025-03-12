@@ -308,11 +308,14 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     print(f"Disconnected from device {self.connected_device.Name}")
                     self.connected_device = None
                     self.disconnect_button.setEnabled(False)
+                    self.current_sensor = None
                     # 停止数据更新相关操作，但不清除绘图
                     self.data_buffer = None
                     self.buffer_index = 0
                     self.prev_buffer_index = 0
-                    self.timer.stop()  # 停止定时器                   
+                    self.timer.stop()  # 停止定时器
+                    self.device_list.clear()
+                    self.discovered_devices.clear()                   
                 except Exception as e:
                     print(f"断开设备连接时出现异常: {e}")
             else:
@@ -521,9 +524,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     self.canvas.draw()  # 初始绘制时没有背景
 
                 # 更新坐标轴标签和标题
-                self.ax.set_title(f'EEG Waveform (通道 {self.current_channel + 1})')
-                self.ax.set_xlabel('Time (s)')
-                self.ax.set_ylabel('Amplitude (uV)')
+                # self.ax.set_title(f'EEG Waveform (通道 {self.current_channel + 1})')
+                # self.ax.set_xlabel('Time (s)')
+                # self.ax.set_ylabel('Amplitude (uV)')
+                self.canvas.draw()  # 初始绘制时没有背景
 
             if self.impedance and self.current_channel < len(self.impedance):
                 current_impedance = np.mean(self.impedance[self.current_channel]) / 1000
