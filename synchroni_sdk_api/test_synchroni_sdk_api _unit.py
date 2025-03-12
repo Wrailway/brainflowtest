@@ -67,7 +67,7 @@ class TestSensorController(unittest.TestCase):
         logger.info('\nTesting startScan method')
         success = self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         self.assertEqual(success, True, "Failed to start scan.")
-        self.assertEqual(self.controller.isScaning, True, "Scan did not start as expected.")
+        self.assertEqual(self.controller.isScanning, True, "Scan did not start as expected.")
         time.sleep(WAIT_SCAN_RESULT)
 
     def test_scan_once(self):
@@ -80,14 +80,14 @@ class TestSensorController(unittest.TestCase):
         self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         time.sleep(1)
         self.controller.stopScan()
-        self.assertEqual(self.controller.isScaning, False, "Failed to stop scan.")
+        self.assertEqual(self.controller.isScanning, False, "Failed to stop scan.")
 
     def test_check_scanning(self):
         logger.info('\nTesting isScanning property')
         self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         time.sleep(1)
-        is_scanning = self.controller.isScaning
-        self.assertEqual(isinstance(is_scanning, bool), True, "isScaning should return a boolean.")
+        is_scanning = self.controller.isScanning
+        self.assertEqual(isinstance(is_scanning, bool), True, "isScanning should return a boolean.")
         self.controller.stopScan()
 
     def test_check_bluetooth_enabled(self):

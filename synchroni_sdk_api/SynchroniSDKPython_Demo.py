@@ -220,7 +220,7 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
             if not self.SensorControllerInstance.isEnable:
                 print('please open bluetooth')
                 return
-            if not self.SensorControllerInstance.isScaning:
+            if not self.SensorControllerInstance.isScanning:
                 if not self.SensorControllerInstance.startScan(SCAN_DEVICE_PERIOD_IN_MS):
                     print('please try scan later')
                 self.scan_button.setEnabled(False)
@@ -372,18 +372,19 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     self.impedance[i] = [sample.impedance for sample in channel]
 
                     # 新增：平滑处理 - 移动平均
-                    window_size_smooth = 3  # 移动平均窗口大小，可以根据实际情况调整
+                    window_size_smooth = 2  # 移动平均窗口大小，可以根据实际情况调整
                     smooth_kernel = np.ones(window_size_smooth)/window_size_smooth
                     new_data_smoothed = convolve(new_data, smooth_kernel, mode='same')
 
                     # 新增：去噪 - 高斯滤波
                     gaussian_kernel = gaussian(10, std=2)  # 高斯核大小和标准差可调整
-                    new_data_denoised = convolve(new_data, gaussian_kernel, mode='same')
+                    new_data_denoised = convolve(new_data_smoothed, gaussian_kernel, mode='same')
 
                     # 新增：丢包检测和补点逻辑优化
                     expected_samples = self.buffer_index - self.prev_buffer_index  # 预期的样本数量
                     if num_samples < expected_samples:
                         missing_samples = expected_samples - num_samples
+                        print(f'missing_samples={missing_samples}')
                         x = np.arange(self.prev_buffer_index, self.prev_buffer_index + num_samples)
                         y = self.data_buffer[i, self.prev_buffer_index:self.prev_buffer_index + num_samples]
                         # 检查数据单调性
