@@ -10,7 +10,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-SCAN_DEVICE_PERIOD_IN_MS = 6000
+SCAN_DEVICE_PERIOD_IN_MS = 5000
 WAIT_SCAN_RESULT = SCAN_DEVICE_PERIOD_IN_MS / 1000 + 3
 discovered_devices = []
 
@@ -29,7 +29,7 @@ def wait_for_state(profile, target_state, timeout=10):
     while time.time() - start_time < timeout:
         if profile.deviceState == target_state:
             return True
-        time.sleep(0.2)
+        time.sleep(0.5)
     return False
 
 class TestSensorController(unittest.TestCase):
@@ -74,6 +74,11 @@ class TestSensorController(unittest.TestCase):
         logger.info('\nTesting scan method')
         ble_devices = self.controller.scan(SCAN_DEVICE_PERIOD_IN_MS)
         self.assertEqual(isinstance(ble_devices, list), True, "scan method should return a list.")
+        
+    async def test_asyncScan(self):
+        logger.info('\nTesting asyncScan method')
+        deviceList = await self.controller.asyncScan(3000)
+        self.assertEqual(isinstance(deviceList, list), True, "scan method should return a list.")
 
     def test_stop_scan(self):
         logger.info('\nTesting stopScan method')

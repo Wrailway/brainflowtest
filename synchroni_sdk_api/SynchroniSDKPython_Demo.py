@@ -26,6 +26,7 @@ PLOT_UPDATE_INTERVAL = 100  # 更新图像的时间间隔
 PERIOD_OPTIONS = {
     "500ms": 0.5,
     "1s": 1,
+    "3s": 3,
     "5s": 5,
     "10s": 10,
     "30s": 30,
