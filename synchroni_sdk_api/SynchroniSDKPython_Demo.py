@@ -315,6 +315,10 @@ class BluetoothDeviceScanner(QtWidgets.QWidget):
                     print(f"Disconnected from device {self.connected_device.Name}")
                     self.connected_device = None
                     self.disconnect_button.setEnabled(False)
+                    self.current_sensor.onDataCallback = None
+                    self.current_sensor.onPowerChanged = None
+                    self.current_sensor.onStateChanged = None
+                    self.current_sensor.onErrorCallback = None
                     self.current_sensor = None
                     # 停止数据更新相关操作，但不清除绘图
                     self.data_buffer = None
