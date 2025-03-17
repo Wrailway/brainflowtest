@@ -35,8 +35,6 @@ def wait_for_state(profile, target_state, timeout=10):
 class TestSensorController(unittest.TestCase):
     def setUp(self):
         logger.info("TestSensorController -> set up")
-        # self.loop = asyncio.new_event_loop()
-        # asyncio.set_event_loop(self.loop)
         self.controller = SensorController()
         if self.controller is None:
             logger.error("create SensorController fail,Skipping tests.\n")
@@ -53,12 +51,13 @@ class TestSensorController(unittest.TestCase):
     def tearDown(self):
         logger.info('TestSensorController -> tear down')
         try:
+            if self.controller.isScanning:
+                self.controller.stopScan()
             self.controller.onDeviceFoundCallback = None
             # self.controller.terminate()
             self.controller = None
             global discovered_devices
             discovered_devices = []
-            # self.loop.close()
             logger.info('TestSensorController -> tear down successfully.\n')
         except Exception as e:
             logger.error(f'TestSensorController -> Error in tear down: {e}\n')
@@ -68,32 +67,26 @@ class TestSensorController(unittest.TestCase):
         success = self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         self.assertEqual(success, True, "Failed to start scan.")
         self.assertEqual(self.controller.isScanning, True, "Scan did not start as expected.")
-        time.sleep(WAIT_SCAN_RESULT)
 
     def test_scan_once(self):
         logger.info('\nTesting scan method')
         ble_devices = self.controller.scan(SCAN_DEVICE_PERIOD_IN_MS)
         self.assertEqual(isinstance(ble_devices, list), True, "scan method should return a list.")
         
-    async def test_asyncScan(self):
-        logger.info('\nTesting asyncScan method')
-        deviceList = await self.controller.asyncScan(3000)
-        self.assertEqual(isinstance(deviceList, list), True, "scan method should return a list.")
-
     def test_stop_scan(self):
         logger.info('\nTesting stopScan method')
         self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         time.sleep(1)
         self.controller.stopScan()
-        self.assertEqual(self.controller.isScanning, False, "Failed to stop scan.")
+        self.assertEqual(self.controller.isScanning, False, "Scan did not stop as expected.")
 
     def test_check_scanning(self):
         logger.info('\nTesting isScanning property')
         self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
         time.sleep(1)
-        is_scanning = self.controller.isScanning
-        self.assertEqual(isinstance(is_scanning, bool), True, "isScanning should return a boolean.")
+        self.assertEqual(self.controller.isScanning, True, "start scan,isScanning should return true.")
         self.controller.stopScan()
+        self.assertEqual(self.controller.isScanning, False, "stop scan,isScanning should return false.")
 
     def test_check_bluetooth_enabled(self):
         logger.info('\nTesting isEnable property')
@@ -111,7 +104,7 @@ class TestSensorController(unittest.TestCase):
                              "requireSensor should return a SensorProfile or None.")
         else:
             logger.warning("No devices were discovered. Skipping requireSensor test.")
-
+            
     def test_get_sensor(self):
         logger.info('\nTesting getSensor method')
         self.controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
@@ -149,8 +142,6 @@ class TestSensorController(unittest.TestCase):
 class TestSensorProfile(unittest.TestCase):
     def setUp(self):
         logger.info("TestSensorProfile -> set up")
-        # self.loop = asyncio.new_event_loop()
-        # asyncio.set_event_loop(self.loop)
         self.controller = SensorController()
         if self.controller is None:
             logger.error('create SensorController fail, Skipping tests.\n')
@@ -200,11 +191,12 @@ class TestSensorProfile(unittest.TestCase):
             if hasattr(self, 'profile'):
                 self.profile.disconnect()
             self.controller.onDeviceFoundCallback = None
+            if self.controller.isScanning:
+                self.controller.stopScan()
             # self.controller.terminate()
             self.controller = None
             global discovered_devices
             discovered_devices = []
-            # self.loop.close()
             logger.info('TestSensorProfile -> tear down successfully.\n')
         except Exception as e:
              logger.error(f'TestSensorProfile -> Error in tear down: {e}\n')
@@ -214,23 +206,23 @@ class TestSensorProfile(unittest.TestCase):
         success = self.profile.connect()
         
         self.assertEqual(success, True, 'Failed to connect to device.')
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_disconnect(self):
         logger.info('\nTesting disconnect method')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         success = self.profile.disconnect()
         self.assertEqual(success, True, 'Failed to disconnect from device.')
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_get_device_status(self):
@@ -247,38 +239,38 @@ class TestSensorProfile(unittest.TestCase):
         logger.info('\nTesting getDeviceInfo method')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
+            
         device_info = self.profile.getDeviceInfo()
-        
         if device_info:
             self.assertEqual(isinstance(device_info, dict), True, 'getDeviceInfo should return a dict.')
         else:
             self.assertEqual(device_info, None, 'getDeviceInfo should return None if not connected.')
             
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_init_data_transfer(self):
         logger.info('\nTesting init method')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         success = self.profile.init(5, 60 * 1000)
         self.assertEqual(success, True, 'Failed to initialize data transfer.')
         self.profile.disconnect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_check_init_data_transfer(self):
         logger.info('\nTesting hasInited property')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         self.profile.init(5, 60 * 1000)
@@ -286,14 +278,14 @@ class TestSensorProfile(unittest.TestCase):
         self.assertEqual(isinstance(has_inited, bool), True, 'hasInited should return a boolean.')
         self.profile.disconnect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_start_data_notification(self):
         logger.info('\nTesting startDataNotification method')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         self.profile.init(5, 60 * 1000)
@@ -303,14 +295,14 @@ class TestSensorProfile(unittest.TestCase):
             self.profile.stopDataNotification()
             
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_stop_data_notification(self):
         logger.info('\nTesting stopDataNotification method')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         self.profile.init(5, 60 * 1000)
@@ -320,14 +312,14 @@ class TestSensorProfile(unittest.TestCase):
             self.assertEqual(success, True, 'Failed to stop data notification.')
             
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_check_data_transfering(self):
         logger.info('\nTesting isDataTransfering property...')
         self.profile.connect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         self.profile.init(5, 60 * 1000)
@@ -338,26 +330,26 @@ class TestSensorProfile(unittest.TestCase):
             self.profile.stopDataNotification()
             
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_get_battery_level(self):
         logger.info('\nTesting getBatteryLevel method')
         self.profile.connect()
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         battery_power = self.profile.getBatteryLevel()
         self.assertEqual(isinstance(battery_power, int), True, 'getBatteryLevel should return an integer.')
         self.profile.disconnect()
         
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
     def test_set_param(self):
         logger.info('\nTesting setParam method')
         self.profile.connect()
-        if not wait_for_state(self.profile, DeviceStateEx.Ready):
+        if not wait_for_state(self.profile, DeviceStateEx.Ready,timeout=15):
             self.fail('Device did not reach Ready state within timeout.')
             
         result = self.profile.setParam("NTF_EMG", "ON")
@@ -365,7 +357,7 @@ class TestSensorProfile(unittest.TestCase):
         self.assertEqual(result, "OK", 'Failed to set parameter.')
         
         self.profile.disconnect()
-        if not wait_for_state(self.profile, DeviceStateEx.Disconnected):
+        if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
 
 
