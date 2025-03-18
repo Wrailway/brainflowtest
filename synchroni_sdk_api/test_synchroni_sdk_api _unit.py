@@ -359,7 +359,179 @@ class TestSensorProfile(unittest.TestCase):
         self.profile.disconnect()
         if not wait_for_state(self.profile, DeviceStateEx.Disconnected,timeout=15):
             self.fail('Device did not reach Disconnected state within timeout.')
+            
+            
+class TestSensorControllerAsyncMethods(unittest.IsolatedAsyncioTestCase):
 
+    async def asyncSetUp(self):
+        self.controller = SensorController()
+        self.period = 5000  # 扫描时长，单位毫秒
+
+    async def scan_and_get_device(self):
+        """扫描设备并获取第一个设备"""
+        devices = await self.controller.asyncScan(self.period)
+        if not devices:
+            self.skipTest("未扫描到任何设备，跳过测试。")
+        return devices[0]
+
+    async def connect_device(self, sensor):
+        """连接设备"""
+        try:
+            if sensor.deviceState != DeviceStateEx.Ready:
+                await sensor.asyncConnect()
+                await asyncio.sleep(5)  # 等待连接完成
+                if sensor.deviceState != DeviceStateEx.Ready:
+                    raise Exception("设备未成功连接")
+        except Exception as e:
+            self.fail(f"连接设备时出错: {str(e)}")
+
+    async def disconnect_device(self, sensor):
+        """断开设备连接"""
+        try:
+            await sensor.asyncDisconnect()
+            await asyncio.sleep(2)  # 等待断开连接完成
+            if sensor.deviceState != DeviceStateEx.Disconnected:
+                raise Exception("设备未成功断开连接")
+        except Exception as e:
+            self.fail(f"断开设备连接时出错: {str(e)}")
+
+    async def test_asyncScan(self):
+        """测试 asyncScan 方法"""
+        devices = await self.controller.asyncScan(self.period)
+        self.assertEqual(isinstance(devices, list), True)
+        if devices:
+            print(f"扫描到的设备: {[device.Address for device in devices]}")
+            # 检查扫描到的设备列表中的每个设备是否是 BLEDevice 类型
+            for device in devices:
+                self.assertEqual(isinstance(device, BLEDevice), True)
+        else:
+            print("未扫描到任何设备。")
+
+    async def test_asyncStartAndStopDataNotification(self):
+        """测试 asyncStartDataNotification 和 asyncStopDataNotification 方法"""
+        device = await self.scan_and_get_device()
+        sensor = self.controller.requireSensor(device)
+        await self.connect_device(sensor)
+        await asyncio.sleep(15)
+        try:
+            # 启动数据通知
+            start_result = await sensor.asyncStartDataNotification()
+            # self.assertEqual(start_result, True)
+            print("数据通知已启动。")
+
+            # 等待一段时间以接收数据
+            await asyncio.sleep(15)
+
+            # 检查数据是否正在传输
+            self.assertEqual(isinstance(sensor.isDataTransfering, bool), True)
+
+            # 停止数据通知
+            stop_result = await sensor.asyncStopDataNotification()
+            await asyncio.sleep(15)
+            # self.assertEqual(stop_result, True)
+            print("数据通知已停止。")
+
+            # 再次检查数据是否停止传输
+            self.assertEqual(sensor.isDataTransfering, False)
+        finally:
+            await self.disconnect_device(sensor)
+
+    async def test_asyncSetParam(self):
+        """测试 asyncSetParam 方法"""
+        device = await self.scan_and_get_device()
+        sensor = self.controller.requireSensor(device)
+        await self.connect_device(sensor)
+
+        try:
+            param_key = "NTF_EMG"
+            param_value = "ON"
+            set_result = await sensor.asyncSetParam(param_key, param_value)
+            self.assertEqual(set_result, "OK")
+            print(f"参数 {param_key} 已设置为 {param_value}。")
+
+        finally:
+            await self.disconnect_device(sensor)
+
+    async def test_asyncConnectDisconnect(self):
+        """测试设备的异步连接和断开连接"""
+        device = await self.scan_and_get_device()
+        sensor = self.controller.requireSensor(device)
+
+        try:
+            # 连接设备
+            connect_result = await sensor.asyncConnect()
+            self.assertEqual(connect_result, True)
+            await asyncio.sleep(15)
+            self.assertEqual(sensor.deviceState, DeviceStateEx.Ready)
+
+            # 断开设备
+            disconnect_result = await sensor.asyncDisconnect()
+            self.assertEqual(disconnect_result, True)
+            await asyncio.sleep(15)
+            self.assertEqual(sensor.deviceState, DeviceStateEx.Disconnected)
+        except Exception as e:
+            self.fail(f"连接或断开设备时出错: {str(e)}")
+
+
+class TestSensorProfileAsyncMethods(unittest.IsolatedAsyncioTestCase):
+
+    async def asyncSetUp(self):
+        self.controller = SensorController()
+        self.period = 5000  # 扫描时长，单位毫秒
+        devices = await self.controller.asyncScan(self.period)
+        if not devices:
+            self.skipTest("未扫描到任何设备，跳过测试。")
+        device = devices[0]
+        self.sensor = self.controller.requireSensor(device)
+
+    async def test_asyncInit(self):
+        """测试 asyncInit 方法"""
+        await self.sensor.asyncConnect()
+        await asyncio.sleep(5)
+        try:
+            if self.sensor.deviceState == DeviceStateEx.Ready:
+                result = await self.sensor.asyncInit(5, 60 * 1000)
+                self.assertEqual(result, True)
+                print("数据采集初始化成功。")
+        finally:
+            await self.sensor.asyncDisconnect()
+
+    async def test_asyncGetBatteryLevel(self):
+        """测试 asyncGetBatteryLevel 方法"""
+        await self.sensor.asyncConnect()
+        await asyncio.sleep(5)
+        try:
+            if self.sensor.deviceState == DeviceStateEx.Ready:
+                battery_level = self.sensor.getBatteryLevel()
+                self.assertEqual(isinstance(battery_level, int), True)
+                print(f"获取电池电量: {battery_level}")
+        finally:
+            await self.sensor.asyncDisconnect()
+
+    async def test_asyncGetDeviceInfo(self):
+        """测试 asyncGetDeviceInfo 方法"""
+        await self.sensor.asyncConnect()
+        await asyncio.sleep(5)
+        try:
+            if self.sensor.deviceState == DeviceStateEx.Ready:
+                device_info = self.sensor.getDeviceInfo()
+                if device_info:
+                    self.assertEqual(isinstance(device_info, dict), True)
+                    print(f"获取设备信息: {device_info}")
+                else:
+                    self.assertEqual(device_info, None)
+                    print("未获取到设备信息")
+        finally:
+            await self.sensor.asyncDisconnect()
 
 if __name__ == "__main__":
     unittest.main()
+    # # 创建一个测试套件
+    # suite = unittest.TestSuite()
+    # # 向套件中添加指定的测试用例
+    # suite.addTest(TestAdd("test_positive_numbers"))
+
+    # # 创建一个测试运行器
+    # runner = unittest.TextTestRunner()
+    # # 运行测试套件
+    # runner.run(suite)
