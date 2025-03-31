@@ -28,6 +28,7 @@ def controller():
 def device_found_callback():
     def _callback(deviceList: List[BLEDevice]):
         global discovered_devices
+        # filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
         filteredDevice = filter(lambda x: x.Address == specified_mac, deviceList)
         for device in filteredDevice:
             if device.Address not in [d.Address for d in discovered_devices]:
