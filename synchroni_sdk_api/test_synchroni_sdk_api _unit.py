@@ -17,8 +17,8 @@ specified_mac = '24:71:89:EF:2F:B7'
 
 def device_found_callback(deviceList: List[BLEDevice]):
     global discovered_devices
-    # filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
-    filteredDevice = filter(lambda x: x.Address == specified_mac, deviceList)
+    filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
+    # filteredDevice = filter(lambda x: x.Address == specified_mac, deviceList)
     for device in filteredDevice:
         if device.Address not in [d.Address for d in discovered_devices]:
             discovered_devices.append(device)

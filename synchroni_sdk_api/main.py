@@ -2,6 +2,20 @@ import subprocess
 import time
 import webbrowser
 import socket
+import shutil
+
+# 动态获取 Allure 路径
+ALLURE_PATH = shutil.which('allure')
+if ALLURE_PATH is None:
+    print("未找到 Allure，请确保 Allure 已安装并配置到环境变量中。")
+    exit(1)
+
+TEST_FILE = 'test_synchroni_sdk_api.py'
+RESULT_DIR = 'allure-results'
+REPORT_DIR = 'allure-report'
+SERVER_PORT = 8081
+SERVER_URL = f"http://localhost:{SERVER_PORT}"
+
 
 def run_pytest():
     """
@@ -9,59 +23,69 @@ def run_pytest():
     """
     print("开始执行 pytest 测试...")
     try:
-        subprocess.run(['pytest', '-v', '-s', 'test_synchroni_sdk_api.py', '--alluredir=allure-results'], check=True)
+        subprocess.run(['pytest', '-v', '-s', TEST_FILE, f'--alluredir={RESULT_DIR}'], check=False)
         print("pytest 测试执行完成")
-    except subprocess.CalledProcessError as e:
-        print(f"pytest 测试执行失败: {e}")
+    except Exception as e:
+        print(f"pytest 测试执行过程中出现错误: {e}")
+
 
 def generate_allure_report():
     """
     依据 allure-results 目录下的结果生成 Allure 报告
     """
     print("开始生成 Allure 报告...")
-    allure_path = r"D:\software\allure-2.32.0\allure-2.32.0\bin\allure.bat"  # 根据实际安装路径修改
     try:
-        subprocess.run([allure_path, 'generate', 'allure-results', '-o', 'allure-report', '--clean'], check=True)
+        subprocess.run([ALLURE_PATH, 'generate', RESULT_DIR, '-o', REPORT_DIR, '--clean'], check=True)
         print("Allure 报告生成完成")
     except subprocess.CalledProcessError as e:
         print(f"Allure 报告生成失败: {e}")
+        raise
+
+
+def is_server_running():
+    """
+    检查 Allure 服务器是否正在运行
+    """
+    try:
+        with socket.create_connection(('localhost', SERVER_PORT), timeout=1):
+            return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
 
 def start_allure_server():
     """
     启动 Allure 服务器并等待其启动
     """
     print("启动 Allure 服务器...")
-    allure_path = r"D:\software\allure-2.32.0\allure-2.32.0\bin\allure.bat"  # 根据实际安装路径修改
-    server_process = subprocess.Popen([allure_path, 'serve', 'allure-results', '-p', '8081'])
-    # 等待服务器启动
+    server_process = subprocess.Popen([ALLURE_PATH, 'serve', RESULT_DIR, '-p', str(SERVER_PORT)])
     max_retries = 30
     retries = 0
     while retries < max_retries:
-        try:
-            with socket.create_connection(('localhost', 8081), timeout=1):
-                print("Allure 服务器已启动")
-                break
-        except (ConnectionRefusedError, OSError):
-            retries += 1
-            time.sleep(1)
+        if is_server_running():
+            print("Allure 服务器已启动")
+            break
+        retries += 1
+        time.sleep(1)
     else:
         print("Allure 服务器启动失败，超时等待")
         server_process.terminate()
         raise TimeoutError("Allure 服务器启动超时")
     return server_process
 
+
 def open_browser():
     """
     使用默认浏览器打开 Allure 报告页面
     """
-    url = "http://localhost:8081"
-    print(f"打开浏览器访问 Allure 报告页面: {url}")
-    webbrowser.open(url)
+    print(f"打开浏览器访问 Allure 报告页面: {SERVER_URL}")
+    webbrowser.open(SERVER_URL)
 
-if __name__ == "__main__":
+
+def main():
     run_pytest()
-    generate_allure_report()
     try:
+        generate_allure_report()
         server_process = start_allure_server()
         open_browser()
         try:
@@ -71,4 +95,8 @@ if __name__ == "__main__":
             print("用户手动终止，停止 Allure 服务器...")
             server_process.terminate()
     except Exception as e:
-        print(f"启动 Allure 服务器或打开浏览器时出现错误: {e}")
+        print(f"执行过程中出现错误: {e}")
+
+
+if __name__ == "__main__":
+    main()

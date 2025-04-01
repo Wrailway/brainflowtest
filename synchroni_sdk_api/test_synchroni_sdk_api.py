@@ -9,10 +9,12 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-SCAN_DEVICE_PERIOD_IN_MS = 5000
+# 增加扫描时间
+SCAN_DEVICE_PERIOD_IN_MS = 10000
 WAIT_SCAN_RESULT = SCAN_DEVICE_PERIOD_IN_MS / 1000 + 3
 specified_mac = '24:71:89:EF:2F:B7'
 discovered_devices = []
+
 
 @pytest.fixture(scope="module")
 def controller():
@@ -24,36 +26,45 @@ def controller():
         ctrl.stopScan()
     ctrl.onDeviceFoundCallback = None
 
+
 @pytest.fixture(scope="module")
 def device_found_callback():
     def _callback(deviceList: List[BLEDevice]):
         global discovered_devices
-        # filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
-        filteredDevice = filter(lambda x: x.Address == specified_mac, deviceList)
-        for device in filteredDevice:
-            if device.Address not in [d.Address for d in discovered_devices]:
-                discovered_devices.append(device)
-                print(f'device.Address = {device.Address }, device.RSSI = {device.RSSI}')
-        logger.info(f'{len(discovered_devices)} Bluetooth devices found in total')
+        try:
+            # 优化设备过滤逻辑，增加日志
+            filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
+            # filteredDevice = [device for device in deviceList if device.Address == specified_mac]
+            for device in filteredDevice:
+                if device.Address not in [d.Address for d in discovered_devices]:
+                    discovered_devices.append(device)
+                    logger.info(f'device.Address = {device.Address }, device.RSSI = {device.RSSI}')
+            logger.info(f'{len(discovered_devices)} Bluetooth devices found in total')
+        except Exception as e:
+            logger.error(f"Error in device_found_callback: {e}")
     return _callback
+
 
 @pytest.fixture(scope="module")
 def sensor_profile(controller, device_found_callback):
     controller.onDeviceFoundCallback = device_found_callback
     controller.startScan(SCAN_DEVICE_PERIOD_IN_MS)
+    # 增加等待期间的日志输出
+    logger.info(f"Waiting for {WAIT_SCAN_RESULT} seconds to discover devices...")
     time.sleep(WAIT_SCAN_RESULT)
-    
+
     if not discovered_devices:
         pytest.skip("No devices discovered")
-    
+
     device = discovered_devices[0]
     profile = controller.requireSensor(device)
     yield profile
-    
+
     if profile.deviceState != DeviceStateEx.Disconnected:
         profile.disconnect()
     controller.stopScan()
     discovered_devices.clear()
+
 
 def wait_for_state(profile, target_state, timeout=10):
     start_time = time.time()
@@ -62,6 +73,7 @@ def wait_for_state(profile, target_state, timeout=10):
             return True
         time.sleep(0.5)
     return False
+
 
 # 同步测试部分
 class TestSensorController:
@@ -132,13 +144,14 @@ class TestSensorController:
         ble_devices = controller.getConnectedDevices()
         assert isinstance(ble_devices, list)
 
+
 class TestSensorProfile:
     def test_connect(self, sensor_profile):
         logger.info('\nTesting connect method')
         success = sensor_profile.connect()
         assert success is True
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -146,7 +159,7 @@ class TestSensorProfile:
         logger.info('\nTesting disconnect method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         success = sensor_profile.disconnect()
         assert success is True
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
@@ -165,13 +178,13 @@ class TestSensorProfile:
         logger.info('\nTesting getDeviceInfo method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         device_info = sensor_profile.getDeviceInfo()
         if device_info:
             assert isinstance(device_info, dict)
         else:
             assert device_info is None
-            
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -179,10 +192,10 @@ class TestSensorProfile:
         logger.info('\nTesting init method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         success = sensor_profile.init(5, 60 * 1000)
         assert success is True
-        
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -190,11 +203,11 @@ class TestSensorProfile:
         logger.info('\nTesting hasInited property')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         sensor_profile.init(5, 60 * 1000)
         has_inited = sensor_profile.hasInited
         assert isinstance(has_inited, bool)
-        
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -202,13 +215,13 @@ class TestSensorProfile:
         logger.info('\nTesting startDataNotification method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         sensor_profile.init(5, 60 * 1000)
         if sensor_profile.hasInited:
             success = sensor_profile.startDataNotification()
             assert success is True
             sensor_profile.stopDataNotification()
-            
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -216,13 +229,13 @@ class TestSensorProfile:
         logger.info('\nTesting stopDataNotification method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         sensor_profile.init(5, 60 * 1000)
         if sensor_profile.hasInited:
             sensor_profile.startDataNotification()
             success = sensor_profile.stopDataNotification()
             assert success is True
-            
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -230,14 +243,14 @@ class TestSensorProfile:
         logger.info('\nTesting isDataTransfering property')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         sensor_profile.init(5, 60 * 1000)
         if sensor_profile.hasInited:
             sensor_profile.startDataNotification()
             is_transfering = sensor_profile.isDataTransfering
             assert isinstance(is_transfering, bool)
             sensor_profile.stopDataNotification()
-            
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -245,10 +258,10 @@ class TestSensorProfile:
         logger.info('\nTesting getBatteryLevel method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         battery_power = sensor_profile.getBatteryLevel()
         assert isinstance(battery_power, int)
-        
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
 
@@ -256,12 +269,13 @@ class TestSensorProfile:
         logger.info('\nTesting setParam method')
         sensor_profile.connect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Ready, 15) is True
-        
+
         result = sensor_profile.setParam("NTF_EMG", "ON")
         assert result == "OK"
-        
+
         sensor_profile.disconnect()
         assert wait_for_state(sensor_profile, DeviceStateEx.Disconnected, 15) is True
+
 
 # 异步测试部分
 @pytest.mark.asyncio
@@ -281,15 +295,15 @@ class TestSensorControllerAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
-        
+
         connect_result = await sensor.asyncConnect()
         assert connect_result is True
         await asyncio.sleep(5)
         assert sensor.deviceState == DeviceStateEx.Ready
-        
+
         disconnect_result = await sensor.asyncDisconnect()
         assert disconnect_result is True
         await asyncio.sleep(5)
@@ -300,12 +314,12 @@ class TestSensorControllerAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
         await sensor.asyncConnect()
         await asyncio.sleep(5)
-        
+
         try:
             set_result = await sensor.asyncSetParam("NTF_EMG", "ON")
             assert set_result == "OK"
@@ -317,24 +331,25 @@ class TestSensorControllerAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
         await sensor.asyncConnect()
         await asyncio.sleep(5)
-        
+
         try:
             start_result = await sensor.asyncStartDataNotification()
             assert start_result is True
             await asyncio.sleep(5)
             assert sensor.isDataTransfering is True
-            
+
             stop_result = await sensor.asyncStopDataNotification()
             assert stop_result is True
             await asyncio.sleep(5)
             assert sensor.isDataTransfering is False
         finally:
             await sensor.asyncDisconnect()
+
 
 @pytest.mark.asyncio
 class TestSensorProfileAsyncMethods:
@@ -343,12 +358,12 @@ class TestSensorProfileAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
         await sensor.asyncConnect()
         await asyncio.sleep(5)
-        
+
         try:
             if sensor.deviceState == DeviceStateEx.Ready:
                 result = await sensor.asyncInit(5, 60 * 1000)
@@ -361,12 +376,12 @@ class TestSensorProfileAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
         await sensor.asyncConnect()
         await asyncio.sleep(5)
-        
+
         try:
             if sensor.deviceState == DeviceStateEx.Ready:
                 battery_level = sensor.getBatteryLevel()
@@ -379,12 +394,12 @@ class TestSensorProfileAsyncMethods:
         devices = await controller.asyncScan(SCAN_DEVICE_PERIOD_IN_MS)
         if not devices:
             pytest.skip("No devices discovered")
-            
+
         device = devices[0]
         sensor = controller.requireSensor(device)
         await sensor.asyncConnect()
         await asyncio.sleep(5)
-        
+
         try:
             if sensor.deviceState == DeviceStateEx.Ready:
                 device_info = sensor.getDeviceInfo()
