@@ -312,6 +312,7 @@ class TestSensorProfile:
 
         battery_power = sensor_profile_sync.getBatteryLevel()
         assert isinstance(battery_power, int)
+        assert 0 <= battery_power <= 100
 
         sensor_profile_sync.disconnect()
         assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
@@ -385,8 +386,28 @@ class TestSensorControllerAsyncMethods:
             if retry == MAX_SCAN_RETRIES - 1:
                 pytest.skip("No devices discovered after multiple retries")
 
-    async def test_asyncConnectDisconnect(self, controller):
-        logger.info('\nTesting asyncConnect/Disconnect')
+    # async def test_asyncConnectDisconnect(self, controller):
+    #     logger.info('\nTesting asyncConnect/Disconnect')
+    #     for retry in range(MAX_SCAN_RETRIES):
+    #         devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
+    #         if devices:
+    #             device = devices[0]
+    #             sensor = controller.requireSensor(device)
+
+    #             connect_result = await sensor.asyncConnect()
+    #             assert connect_result is True
+    #             await asyncio.sleep(5)
+    #             assert sensor.deviceState == DeviceStateEx.Ready
+
+    #             disconnect_result = await sensor.asyncDisconnect()
+    #             assert disconnect_result is True
+    #             await asyncio.sleep(5)
+    #             assert sensor.deviceState == DeviceStateEx.Disconnected
+    #             break
+    #         if retry == MAX_SCAN_RETRIES - 1:
+    #             pytest.skip("No devices discovered after multiple retries")
+    async def test_asyncConnect(self, controller):
+        logger.info('\nTesting asyncConnect')
         for retry in range(MAX_SCAN_RETRIES):
             devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
             if devices:
@@ -398,6 +419,27 @@ class TestSensorControllerAsyncMethods:
                 await asyncio.sleep(5)
                 assert sensor.deviceState == DeviceStateEx.Ready
 
+                # 断开连接以清理状态，可根据实际情况调整
+                await sensor.asyncDisconnect()
+                break
+            if retry == MAX_SCAN_RETRIES - 1:
+                pytest.skip("No devices discovered after multiple retries")
+
+    async def test_asyncDisconnect(self, controller):
+        logger.info('\nTesting asyncDisconnect')
+        for retry in range(MAX_SCAN_RETRIES):
+            devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
+            if devices:
+                device = devices[0]
+                sensor = controller.requireSensor(device)
+
+                # 先连接设备
+                connect_result = await sensor.asyncConnect()
+                assert connect_result is True
+                await asyncio.sleep(5)
+                assert sensor.deviceState == DeviceStateEx.Ready
+
+                # 进行断开连接测试
                 disconnect_result = await sensor.asyncDisconnect()
                 assert disconnect_result is True
                 await asyncio.sleep(5)
@@ -425,8 +467,33 @@ class TestSensorControllerAsyncMethods:
             if retry == MAX_SCAN_RETRIES - 1:
                 pytest.skip("No devices discovered after multiple retries")
 
-    async def test_asyncStartAndStopDataNotification(self, controller):
-        logger.info('\nTesting asyncStart/Stop Data Notification')
+    # async def test_asyncStartAndStopDataNotification(self, controller):
+    #     logger.info('\nTesting asyncStart/Stop Data Notification')
+    #     for retry in range(MAX_SCAN_RETRIES):
+    #         devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
+    #         if devices:
+    #             device = devices[0]
+    #             sensor = controller.requireSensor(device)
+    #             await sensor.asyncConnect()
+    #             await asyncio.sleep(5)
+
+    #             try:
+    #                 start_result = await sensor.asyncStartDataNotification()
+    #                 assert start_result is True
+    #                 await asyncio.sleep(5)
+    #                 assert sensor.isDataTransfering is True
+
+    #                 stop_result = await sensor.asyncStopDataNotification()
+    #                 assert stop_result is True
+    #                 await asyncio.sleep(5)
+    #                 assert sensor.isDataTransfering is False
+    #             finally:
+    #                 await sensor.asyncDisconnect()
+    #             break
+    #         if retry == MAX_SCAN_RETRIES - 1:
+    #             pytest.skip("No devices discovered after multiple retries")
+    async def test_asyncStartDataNotification(self, controller):
+        logger.info('\nTesting asyncStart Data Notification')
         for retry in range(MAX_SCAN_RETRIES):
             devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
             if devices:
@@ -440,7 +507,31 @@ class TestSensorControllerAsyncMethods:
                     assert start_result is True
                     await asyncio.sleep(5)
                     assert sensor.isDataTransfering is True
+                finally:
+                    await sensor.asyncDisconnect()
+                break
+            if retry == MAX_SCAN_RETRIES - 1:
+                pytest.skip("No devices discovered after multiple retries")
 
+
+    async def test_asyncStopDataNotification(self, controller):
+        logger.info('\nTesting asyncStop Data Notification')
+        for retry in range(MAX_SCAN_RETRIES):
+            devices = await controller.asyncScan(ASYNC_SCAN_DEVICE_PERIOD_IN_MS)
+            if devices:
+                device = devices[0]
+                sensor = controller.requireSensor(device)
+                await sensor.asyncConnect()
+                await asyncio.sleep(5)
+
+                try:
+                    # 先启动数据通知
+                    start_result = await sensor.asyncStartDataNotification()
+                    assert start_result is True
+                    await asyncio.sleep(5)
+                    assert sensor.isDataTransfering is True
+
+                    # 停止数据通知
                     stop_result = await sensor.asyncStopDataNotification()
                     assert stop_result is True
                     await asyncio.sleep(5)
@@ -512,6 +603,7 @@ class TestSensorProfileAsyncMethods:
                     if sensor.deviceState == DeviceStateEx.Ready:
                         battery_level = sensor.getBatteryLevel()
                         assert isinstance(battery_level, int)
+                        assert 0 <= battery_level <= 100
                 finally:
                     await sensor.asyncDisconnect()
                 break
