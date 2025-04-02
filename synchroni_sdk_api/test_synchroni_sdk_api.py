@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 SCAN_DEVICE_PERIOD_IN_MS = 60000
 ASYNC_SCAN_DEVICE_PERIOD_IN_MS = 2000
 WAIT_SCAN_RESULT = SCAN_DEVICE_PERIOD_IN_MS / 1000 + 3
-specified_mac = '24:71:89:EF:2F:B7'
+specified_mac = 'C4:64:E3:D8:ED:68'
 MAX_SCAN_RETRIES = 3
+TIMEOUT = 30
 
 # 同步扫描设备
 def scan_devices_sync(controller, max_retries=MAX_SCAN_RETRIES):
@@ -75,7 +76,7 @@ async def scan_devices_async(controller, max_retries=MAX_SCAN_RETRIES):
 
     return discovered_devices
 
-def wait_for_state(profile, target_state, timeout=10):
+def wait_for_state(profile, target_state, timeout=TIMEOUT):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if profile.deviceState == target_state:
@@ -200,19 +201,19 @@ class TestSensorProfile:
         logger.info('\nTesting connect method')
         success = sensor_profile_sync.connect()
         assert success is True
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_disconnect(self, sensor_profile_sync):
         logger.info('\nTesting disconnect method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         success = sensor_profile_sync.disconnect()
         assert success is True
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_get_device_status(self, sensor_profile_sync):
         logger.info('\nTesting deviceState property')
@@ -227,7 +228,7 @@ class TestSensorProfile:
     def test_get_device_info(self, sensor_profile_sync):
         logger.info('\nTesting getDeviceInfo method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         device_info = sensor_profile_sync.getDeviceInfo()
         if device_info:
@@ -236,35 +237,35 @@ class TestSensorProfile:
             assert device_info is None
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_init_data_transfer(self, sensor_profile_sync):
         logger.info('\nTesting init method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         success = sensor_profile_sync.init(5, 60 * 1000)
         assert success is True
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_check_init_data_transfer(self, sensor_profile_sync):
         logger.info('\nTesting hasInited property')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         sensor_profile_sync.init(5, 60 * 1000)
         has_inited = sensor_profile_sync.hasInited
         assert isinstance(has_inited, bool)
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_start_data_notification(self, sensor_profile_sync):
         logger.info('\nTesting startDataNotification method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         sensor_profile_sync.init(5, 60 * 1000)
         if sensor_profile_sync.hasInited:
@@ -273,12 +274,12 @@ class TestSensorProfile:
             sensor_profile_sync.stopDataNotification()
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_stop_data_notification(self, sensor_profile_sync):
         logger.info('\nTesting stopDataNotification method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         sensor_profile_sync.init(5, 60 * 1000)
         if sensor_profile_sync.hasInited:
@@ -287,12 +288,12 @@ class TestSensorProfile:
             assert success is True
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_check_data_transfering(self, sensor_profile_sync):
         logger.info('\nTesting isDataTransfering property')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         sensor_profile_sync.init(5, 60 * 1000)
         if sensor_profile_sync.hasInited:
@@ -302,29 +303,29 @@ class TestSensorProfile:
             sensor_profile_sync.stopDataNotification()
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_get_battery_level(self, sensor_profile_sync):
         logger.info('\nTesting getBatteryLevel method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         battery_power = sensor_profile_sync.getBatteryLevel()
         assert isinstance(battery_power, int)
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
     def test_set_param(self, sensor_profile_sync):
         logger.info('\nTesting setParam method')
         sensor_profile_sync.connect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Ready) is True
 
         result = sensor_profile_sync.setParam("NTF_EMG", "ON")
         assert result == "OK"
 
         sensor_profile_sync.disconnect()
-        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected, 15) is True
+        assert wait_for_state(sensor_profile_sync, DeviceStateEx.Disconnected) is True
 
 # 异步测试部分
 @pytest.mark.asyncio
