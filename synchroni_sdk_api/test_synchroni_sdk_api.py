@@ -25,6 +25,7 @@ def scan_devices_sync(controller, max_retries=MAX_SCAN_RETRIES):
         nonlocal discovered_devices
         try:
             filteredDevice = filter(lambda x: x.Name.startswith('OB') or x.Name.startswith('Sync'), deviceList)
+            # filteredDevice = filter(lambda x: x.Address == specified_mac, deviceList)
             for device in filteredDevice:
                 if device.Address not in [d.Address for d in discovered_devices]:
                     discovered_devices.append(device)
