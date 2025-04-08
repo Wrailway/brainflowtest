@@ -11,12 +11,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # 增加扫描时间
-SCAN_DEVICE_PERIOD_IN_MS = 60000
+SCAN_DEVICE_PERIOD_IN_MS = 5000
 ASYNC_SCAN_DEVICE_PERIOD_IN_MS = 5000
 WAIT_SCAN_RESULT = SCAN_DEVICE_PERIOD_IN_MS / 1000 + 3
-specified_mac =  '24:71:89:EF:2B:E2'  # 'C4:64:E3:D8:ED:68'
-MAX_SCAN_RETRIES = 1
-TIMEOUT = 30
+specified_mac =  'C4:64:E3:D8:E9:E2'#'24:71:89:EF:2B:E2'  # 'C4:64:E3:D8:ED:68'
+MAX_SCAN_RETRIES = 3
+TIMEOUT = 45
 
 # 给startScan函数使用的回调
 def scan_devices(controller, max_retries=MAX_SCAN_RETRIES):
