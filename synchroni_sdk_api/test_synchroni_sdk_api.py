@@ -91,15 +91,15 @@ class TestSensorController:
         assert success is True
         assert controller.isScanning is True
 
-    # def test_scan_once(self, controller):
-    #     logger.info('\nTesting scan method')
-    #     try:
-    #         devices = controller.scan(1000)
-    #         if devices is not None:
-    #             assert isinstance(devices, list)
-    #     except Exception as e:
-    #             logger.error(f"Error in test_scan_once : {e}")
-    #     pytest.fail("Failed to scan devices.")
+    def test_scan_once(self, controller):
+        logger.info('\nTesting scan method')
+        try:
+            devices = controller.scan(1000)
+            if devices is not None:
+                assert isinstance(devices, list)
+        except Exception as e:
+                logger.error(f"Error in test_scan_once : {e}")
+                pytest.fail("Failed to scan devices.")
 
     def test_stop_scan(self, controller):
         logger.info('\nTesting stopScan method')
